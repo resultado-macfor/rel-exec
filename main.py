@@ -97,6 +97,9 @@ st.markdown("""
         border-radius: 8px;
         margin: 10px 0;
     }
+    .stProgress > div > div > div > div {
+        background-color: #4f46e5;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -741,31 +744,67 @@ with tab_relatorio:
             # Salvar comparativos no estado da sessão
             st.session_state.comparativos_relatorio = comparativos
             
-            # Gerar relatório completo
-            with st.spinner("📝 Gerando relatório executivo... (isso pode levar alguns minutos)"):
-                
-                # Fluxo sequencial de geração
-                contexto = gerar_contexto_atual(dados, comparativos)
-                st.session_state.relatorio_completo['contexto_atual'] = contexto
-                
-                destaques = gerar_destaques(dados, comparativos, contexto)
-                st.session_state.relatorio_completo['destaques'] = destaques
-                
-                analise_criativos = gerar_analise_criativos(dados, descricoes_imagens, comparativos)
-                st.session_state.relatorio_completo['criativos'] = analise_criativos
-                
-                analise_midias = gerar_analise_midias_pagas(dados, comparativos, destaques)
-                st.session_state.relatorio_completo['midias_pagas'] = analise_midias
-                
-                analise_seo = gerar_analise_seo(dados, comparativos)
-                st.session_state.relatorio_completo['seo'] = analise_seo
-                
-                # Consolidar análises para próximos passos
-                analises_consolidadas = f"{contexto}\n{destaques}\n{analise_criativos}\n{analise_midias}\n{analise_seo}"
-                proximos_passos = gerar_proximos_passos(dados, analises_consolidadas, comparativos)
-                st.session_state.relatorio_completo['proximos_passos'] = proximos_passos
-                
-                st.success("✅ Relatório gerado com sucesso!")
+            # GERAR RELATÓRIO COMPLETO COM SPINNERS E BARRA DE PROGRESSO
+            st.markdown("### 📊 Gerando Relatório Executivo")
+            
+            # Criar containers para feedback visual
+            progress_container = st.container()
+            status_container = st.container()
+            
+            with progress_container:
+                progress_bar = st.progress(0)
+            
+            with status_container:
+                status_text = st.empty()
+            
+            # Etapa 1: Contexto Atual
+            status_text.markdown("🔄 **Etapa 1/6:** Gerando contexto atual...")
+            contexto = gerar_contexto_atual(dados, comparativos)
+            st.session_state.relatorio_completo['contexto_atual'] = contexto
+            progress_bar.progress(16)
+            
+            # Etapa 2: Destaques
+            status_text.markdown("🔄 **Etapa 2/6:** Identificando destaques do período...")
+            destaques = gerar_destaques(dados, comparativos, contexto)
+            st.session_state.relatorio_completo['destaques'] = destaques
+            progress_bar.progress(32)
+            
+            # Etapa 3: Análise de Criativos
+            status_text.markdown("🔄 **Etapa 3/6:** Analisando criativos e performance visual...")
+            analise_criativos = gerar_analise_criativos(dados, descricoes_imagens, comparativos)
+            st.session_state.relatorio_completo['criativos'] = analise_criativos
+            progress_bar.progress(48)
+            
+            # Etapa 4: Análise de Mídias Pagas
+            status_text.markdown("🔄 **Etapa 4/6:** Analisando performance de mídias pagas...")
+            analise_midias = gerar_analise_midias_pagas(dados, comparativos, destaques)
+            st.session_state.relatorio_completo['midias_pagas'] = analise_midias
+            progress_bar.progress(64)
+            
+            # Etapa 5: Análise de SEO
+            status_text.markdown("🔄 **Etapa 5/6:** Analisando dados de SEO e palavras-chave...")
+            analise_seo = gerar_analise_seo(dados, comparativos)
+            st.session_state.relatorio_completo['seo'] = analise_seo
+            progress_bar.progress(80)
+            
+            # Etapa 6: Próximos Passos e Aprendizados
+            status_text.markdown("🔄 **Etapa 6/6:** Consolidando aprendizados e definindo próximos passos...")
+            analises_consolidadas = f"{contexto}\n{destaques}\n{analise_criativos}\n{analise_midias}\n{analise_seo}"
+            proximos_passos = gerar_proximos_passos(dados, analises_consolidadas, comparativos)
+            st.session_state.relatorio_completo['proximos_passos'] = proximos_passos
+            progress_bar.progress(100)
+            
+            # Limpar containers de progresso
+            status_text.markdown("✅ **Relatório gerado com sucesso!**")
+            st.balloons()
+            
+            # Pequena pausa para mostrar a mensagem de sucesso
+            import time
+            time.sleep(1)
+            
+            # Limpar os containers
+            progress_container.empty()
+            status_container.empty()
         
         # Exibir relatório
         if st.session_state.relatorio_completo:
