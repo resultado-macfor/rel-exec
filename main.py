@@ -83,14 +83,36 @@ st.markdown("""
         margin: 3px;
         font-size: 0.9em;
     }
+    .error-message {
+        color: #ef4444;
+        background-color: #fee2e2;
+        padding: 10px;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
+    .success-message {
+        color: #10b981;
+        background-color: #d1fae5;
+        padding: 10px;
+        border-radius: 8px;
+        margin: 10px 0;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 # Inicializar Gemini
 gemini_api_key = os.getenv("GEM_API_KEY")
-genai.configure(api_key=gemini_api_key)
-modelo_texto = genai.GenerativeModel("gemini-2.5-flash")
-modelo_visao = genai.GenerativeModel("gemini-2.5-flash")
+if not gemini_api_key:
+    st.error("⚠️ GEM_API_KEY não encontrada. Por favor, configure a variável de ambiente.")
+    st.stop()
+
+try:
+    genai.configure(api_key=gemini_api_key)
+    modelo_texto = genai.GenerativeModel("gemini-2.5-flash")
+    modelo_visao = genai.GenerativeModel("gemini-2.5-flash")
+except Exception as e:
+    st.error(f"Erro ao configurar Gemini API: {str(e)}")
+    st.stop()
 
 # Título do aplicativo
 st.title("📊 Gerador de Relatório Executivo")
@@ -103,28 +125,36 @@ if 'relatorio_completo' not in st.session_state:
     st.session_state.relatorio_completo = {}
 if 'uploaded_images' not in st.session_state:
     st.session_state.uploaded_images = []
+if 'dados_input' not in st.session_state:
+    st.session_state.dados_input = {}
 
-# Função para calcular variações
+# Função para calcular variações com segurança
 def calcular_variacao(atual, anterior):
-    """Calcula variação percentual entre dois valores"""
+    """Calcula variação percentual entre dois valores com tratamento de erros"""
     try:
-        atual = float(atual) if atual else 0
-        anterior = float(anterior) if anterior else 0
+        # Converter para float, tratando None e strings vazias
+        atual = float(atual) if atual not in [None, '', 'None'] else 0
+        anterior = float(anterior) if anterior not in [None, '', 'None'] else 0
+        
         if anterior == 0:
-            return 0
-        return ((atual - anterior) / anterior) * 100
-    except:
-        return 0
+            return 0.0
+        return ((atual - anterior) / abs(anterior)) * 100
+    except (ValueError, TypeError) as e:
+        return 0.0
 
 # Função para formatar variação com cor
 def formatar_variacao(variacao):
     """Formata variação com cor e símbolo"""
-    if variacao > 0:
-        return f'<span class="comparativo-positivo">▲ {variacao:.1f}%</span>'
-    elif variacao < 0:
-        return f'<span class="comparativo-negativo">▼ {abs(variacao):.1f}%</span>'
-    else:
-        return f'<span>0%</span>'
+    try:
+        variacao = float(variacao) if variacao else 0
+        if variacao > 0:
+            return f'<span class="comparativo-positivo">▲ {variacao:.1f}%</span>'
+        elif variacao < 0:
+            return f'<span class="comparativo-negativo">▼ {abs(variacao):.1f}%</span>'
+        else:
+            return f'<span>0%</span>'
+    except:
+        return '<span>0%</span>'
 
 # Função para descrever imagens com Gemini Vision
 def descrever_imagem(image_bytes) -> str:
@@ -142,15 +172,21 @@ def descrever_imagem(image_bytes) -> str:
         response = modelo_visao.generate_content([prompt, image_pil])
         return response.text
     except Exception as e:
-        return f"Erro ao descrever imagem: {str(e)}"
+        return f"**Erro ao analisar imagem:** {str(e)}\n\nSugestão: Verifique se a imagem é válida e tente novamente."
 
 # Função para descrever todas as imagens
 def descrever_todas_imagens(imagens_upload):
     """Processa todas as imagens e retorna descrições"""
     descricoes = []
+    if not imagens_upload:
+        return descricoes
+    
     progress_bar = st.progress(0)
+    status_text = st.empty()
+    
     for i, uploaded_file in enumerate(imagens_upload):
-        with st.spinner(f"Analisando criativo {i+1}/{len(imagens_upload)}..."):
+        status_text.text(f"Analisando criativo {i+1}/{len(imagens_upload)}: {uploaded_file.name}")
+        try:
             bytes_data = uploaded_file.getvalue()
             descricao = descrever_imagem(bytes_data)
             descricoes.append({
@@ -158,260 +194,283 @@ def descrever_todas_imagens(imagens_upload):
                 'descricao': descricao,
                 'bytes': bytes_data
             })
+        except Exception as e:
+            descricoes.append({
+                'nome': uploaded_file.name,
+                'descricao': f"Erro ao analisar imagem: {str(e)}",
+                'bytes': uploaded_file.getvalue() if uploaded_file else None
+            })
         progress_bar.progress((i + 1) / len(imagens_upload))
+    
+    status_text.text(f"Análise concluída! {len(descricoes)} criativos processados.")
     return descricoes
 
 # Funções de geração de conteúdo com Gemini
 def gerar_contexto_atual(dados: Dict[str, Any], comparativos: Dict) -> str:
     """Gera o contexto atual baseado nos dados e comparativos"""
-    prompt = f"""
-    Com base nos dados abaixo, crie um parágrafo de CONTEXTO ATUAL para um relatório executivo de marketing digital.
-    
-    Informações da Empresa/Marca: {dados.get('info_empresa', 'Não informado')}
-    Período: {dados.get('periodo_relatorio', 'Não informado')}
-    Contexto Adicional: {dados.get('contexto_adicional', 'Não informado')}
-    
-    Análise de Métricas e Comparativos:
-    - Visualizações: {dados.get('visualizacoes_atual', 'N/A')} ({comparativos['visu_mes']:.1f}% vs mês passado, {comparativos['visu_ano']:.1f}% vs ano passado)
-    - Impressões: {dados.get('impressoes_atual', 'N/A')} ({comparativos['imp_mes']:.1f}% vs mês passado, {comparativos['imp_ano']:.1f}% vs ano passado)
-    - Cliques: {dados.get('cliques_atual', 'N/A')} ({comparativos['cli_mes']:.1f}% vs mês passado, {comparativos['cli_ano']:.1f}% vs ano passado)
-    - Engajamentos: {dados.get('engajamentos_atual', 'N/A')} ({comparativos['eng_mes']:.1f}% vs mês passado, {comparativos['eng_ano']:.1f}% vs ano passado)
-    
-    Investimento Total: R$ {comparativos['investimento_total']:,.2f}
-    
-    Informações de Concorrentes: {dados.get('info_concorrentes', 'Não informado')}
-    
-    Formato: 4-5 frases profissionais que contextualizem o momento atual da marca/empresa, incluindo análise dos comparativos e menção aos principais movimentos do período.
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        prompt = f"""
+        Com base nos dados abaixo, crie um parágrafo de CONTEXTO ATUAL para um relatório executivo de marketing digital.
+        
+        Informações da Empresa/Marca: {dados.get('info_empresa', 'Não informado')}
+        Período: {dados.get('periodo_relatorio', 'Não informado')}
+        Contexto Adicional: {dados.get('contexto_adicional', 'Não informado')}
+        
+        Análise de Métricas e Comparativos:
+        - Visualizações: {dados.get('visualizacoes_atual', 'N/A')} ({comparativos.get('visu_mes', 0):.1f}% vs mês passado, {comparativos.get('visu_ano', 0):.1f}% vs ano passado)
+        - Impressões: {dados.get('impressoes_atual', 'N/A')} ({comparativos.get('imp_mes', 0):.1f}% vs mês passado, {comparativos.get('imp_ano', 0):.1f}% vs ano passado)
+        - Cliques: {dados.get('cliques_atual', 'N/A')} ({comparativos.get('cli_mes', 0):.1f}% vs mês passado, {comparativos.get('cli_ano', 0):.1f}% vs ano passado)
+        - Engajamentos: {dados.get('engajamentos_atual', 'N/A')} ({comparativos.get('eng_mes', 0):.1f}% vs mês passado, {comparativos.get('eng_ano', 0):.1f}% vs ano passado)
+        
+        Investimento Total: R$ {comparativos.get('investimento_total', 0):,.2f}
+        
+        Informações de Concorrentes: {dados.get('info_concorrentes', 'Não informado')}
+        
+        Formato: 4-5 frases profissionais que contextualizem o momento atual da marca/empresa, incluindo análise dos comparativos e menção aos principais movimentos do período.
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar contexto atual:** {str(e)}"
 
 def gerar_destaques(dados: Dict[str, Any], comparativos: Dict, contexto_atual: str) -> str:
     """Gera os destaques baseado nos dados e comparativos"""
-    prompt = f"""
-    Com base no contexto abaixo e nos dados fornecidos, crie 5 DESTAQUES principais para o relatório executivo.
-    
-    Contexto Atual: {contexto_atual}
-    
-    Comparativos Detalhados:
-    
-    MÉTRICAS GERAIS (vs mês passado / vs ano passado):
-    - Visualizações: {comparativos['visu_mes']:.1f}% | {comparativos['visu_ano']:.1f}%
-    - Impressões: {comparativos['imp_mes']:.1f}% | {comparativos['imp_ano']:.1f}%
-    - Cliques: {comparativos['cli_mes']:.1f}% | {comparativos['cli_ano']:.1f}%
-    - Engajamentos: {comparativos['eng_mes']:.1f}% | {comparativos['eng_ano']:.1f}%
-    
-    CUSTOS (atual vs mês passado vs ano passado):
-    - CPE: R$ {dados.get('cpe_atual', 'N/A')} | R$ {dados.get('cpe_mes_passado', 'N/A')} | R$ {dados.get('cpe_ano_passado', 'N/A')}
-    - CPC: R$ {dados.get('cpc_atual', 'N/A')} | R$ {dados.get('cpc_mes_passado', 'N/A')} | R$ {dados.get('cpc_ano_passado', 'N/A')}
-    - CPV: R$ {dados.get('cpv_atual', 'N/A')} | R$ {dados.get('cpv_mes_passado', 'N/A')} | R$ {dados.get('cpv_ano_passado', 'N/A')}
-    - CPM: R$ {dados.get('cpm_atual', 'N/A')} | R$ {dados.get('cpm_mes_passado', 'N/A')} | R$ {dados.get('cpm_ano_passado', 'N/A')}
-    
-    SEO (vs mês passado):
-    - Visualizações Orgânicas: {comparativos['seo_visu_org_mes']:.1f}%
-    - Sessões Orgânicas: {comparativos['seo_sessoes_org_mes']:.1f}%
-    - Usuários Orgânicos: {comparativos['seo_usuarios_org_mes']:.1f}%
-    
-    Formato: Lista com 5 bullet points destacando:
-    - Maiores crescimentos e destaques positivos
-    - Pontos de atenção (se houver)
-    - Conquistas significativas
-    - Performance de canais/chaves específicas
-    - Insights baseados nos comparativos
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        # Garantir que todas as chaves existam
+        seo_visu_org_mes = comparativos.get('seo_visualizacoes_org_mes', 0)
+        seo_sessoes_org_mes = comparativos.get('seo_sessoes_org_mes', 0)
+        seo_usuarios_org_mes = comparativos.get('seo_usuarios_org_mes', 0)
+        
+        prompt = f"""
+        Com base no contexto abaixo e nos dados fornecidos, crie 5 DESTAQUES principais para o relatório executivo.
+        
+        Contexto Atual: {contexto_atual}
+        
+        Comparativos Detalhados:
+        
+        MÉTRICAS GERAIS (vs mês passado / vs ano passado):
+        - Visualizações: {comparativos.get('visu_mes', 0):.1f}% | {comparativos.get('visu_ano', 0):.1f}%
+        - Impressões: {comparativos.get('imp_mes', 0):.1f}% | {comparativos.get('imp_ano', 0):.1f}%
+        - Cliques: {comparativos.get('cli_mes', 0):.1f}% | {comparativos.get('cli_ano', 0):.1f}%
+        - Engajamentos: {comparativos.get('eng_mes', 0):.1f}% | {comparativos.get('eng_ano', 0):.1f}%
+        
+        CUSTOS (atual vs mês passado vs ano passado):
+        - CPE: R$ {dados.get('cpe_atual', 'N/A')} | R$ {dados.get('cpe_mes_passado', 'N/A')} | R$ {dados.get('cpe_ano_passado', 'N/A')}
+        - CPC: R$ {dados.get('cpc_atual', 'N/A')} | R$ {dados.get('cpc_mes_passado', 'N/A')} | R$ {dados.get('cpc_ano_passado', 'N/A')}
+        - CPV: R$ {dados.get('cpv_atual', 'N/A')} | R$ {dados.get('cpv_mes_passado', 'N/A')} | R$ {dados.get('cpv_ano_passado', 'N/A')}
+        - CPM: R$ {dados.get('cpm_atual', 'N/A')} | R$ {dados.get('cpm_mes_passado', 'N/A')} | R$ {dados.get('cpm_ano_passado', 'N/A')}
+        
+        SEO (vs mês passado):
+        - Visualizações Orgânicas: {seo_visu_org_mes:.1f}%
+        - Sessões Orgânicas: {seo_sessoes_org_mes:.1f}%
+        - Usuários Orgânicos: {seo_usuarios_org_mes:.1f}%
+        
+        Formato: Lista com 5 bullet points destacando:
+        - Maiores crescimentos e destaques positivos
+        - Pontos de atenção (se houver)
+        - Conquistas significativas
+        - Performance de canais/chaves específicas
+        - Insights baseados nos comparativos
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar destaques:** {str(e)}"
 
 def gerar_analise_criativos(dados: Dict[str, Any], descricoes_imagens: list, comparativos: Dict) -> str:
     """Gera análise dos criativos baseado nas descrições das imagens"""
-    imagens_texto = "\n\n".join([f"**{img['nome']}**: {img['descricao']}" for img in descricoes_imagens]) if descricoes_imagens else "Nenhuma imagem fornecida"
-    
-    prompt = f"""
-    Com base nas descrições dos criativos abaixo e nos dados de performance, crie uma seção de ANÁLISE DE CRIATIVOS para o relatório executivo.
-    
-    DESCRIÇÕES DOS CRIATIVOS:
-    {imagens_texto}
-    
-    PERFORMANCE DO PERÍODO:
-    - Engajamentos: {dados.get('engajamentos_atual', 'N/A')} ({comparativos['eng_mes']:.1f}% vs mês anterior)
-    - Cliques: {dados.get('cliques_atual', 'N/A')} ({comparativos['cli_mes']:.1f}% vs mês anterior)
-    - CPE Atual: R$ {dados.get('cpe_atual', 'N/A')} (vs R$ {dados.get('cpe_mes_passado', 'N/A')} mês anterior)
-    
-    Formato: Análise profissional abordando:
-    1. **Análise Visual dos Criativos**: Padrões identificados, cores, identidade visual
-    2. **Performance por Tipo de Criativo**: Quais formatos estão performando melhor
-    3. **Correlação com Resultados**: Como os criativos impactaram as métricas
-    4. **Recomendações Específicas**: Sugestões de otimização baseadas nas descrições
-    5. **Próximos Testes**: Ideias para novos criativos baseadas nos aprendizados
-    
-    Importante: Conecte as características visuais dos criativos com os resultados obtidos.
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        imagens_texto = "\n\n".join([f"**{img['nome']}**: {img['descricao']}" for img in descricoes_imagens]) if descricoes_imagens else "Nenhuma imagem fornecida para análise."
+        
+        prompt = f"""
+        Com base nas descrições dos criativos abaixo e nos dados de performance, crie uma seção de ANÁLISE DE CRIATIVOS para o relatório executivo.
+        
+        DESCRIÇÕES DOS CRIATIVOS:
+        {imagens_texto}
+        
+        PERFORMANCE DO PERÍODO:
+        - Engajamentos: {dados.get('engajamentos_atual', 'N/A')} ({comparativos.get('eng_mes', 0):.1f}% vs mês anterior)
+        - Cliques: {dados.get('cliques_atual', 'N/A')} ({comparativos.get('cli_mes', 0):.1f}% vs mês anterior)
+        - CPE Atual: R$ {dados.get('cpe_atual', 'N/A')} (vs R$ {dados.get('cpe_mes_passado', 'N/A')} mês anterior)
+        
+        Formato: Análise profissional abordando:
+        1. **Análise Visual dos Criativos**: Padrões identificados, cores, identidade visual
+        2. **Performance por Tipo de Criativo**: Quais formatos estão performando melhor
+        3. **Correlação com Resultados**: Como os criativos impactaram as métricas
+        4. **Recomendações Específicas**: Sugestões de otimização baseadas nas descrições
+        5. **Próximos Testes**: Ideias para novos criativos baseadas nos aprendizados
+        
+        Importante: Conecte as características visuais dos criativos com os resultados obtidos.
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar análise de criativos:** {str(e)}"
 
 def gerar_analise_midias_pagas(dados: Dict[str, Any], comparativos: Dict, destaques: str) -> str:
     """Gera análise de mídias pagas com comparativos"""
-    
-    # Calcular investimento total por período
-    invest_total_atual = comparativos['investimento_total']
-    invest_total_mes = comparativos['investimento_total_mes']
-    invest_total_ano = comparativos['investimento_total_ano']
-    
-    prompt = f"""
-    Com base nos dados de mídia paga e comparativos abaixo, crie uma seção de ANÁLISE DE MÍDIAS PAGAS detalhada.
-    
-    Destaques do Período: {destaques}
-    
-    INVESTIMENTO TOTAL:
-    - Atual: R$ {invest_total_atual:,.2f}
-    - Mês Passado: R$ {invest_total_mes:,.2f} ({comparativos['investimento_total_vs_mes']:.1f}%)
-    - Ano Passado: R$ {invest_total_ano:,.2f} ({comparativos['investimento_total_vs_ano']:.1f}%)
-    
-    INVESTIMENTOS POR PLATAFORMA (Atual | vs Mês | vs Ano):
-    
-    FACEBOOK:
-    - Atual: R$ {dados.get('investimento_fb_atual', 0):,.2f}
-    - vs Mês: {comparativos['fb_mes']:.1f}%
-    - vs Ano: {comparativos['fb_ano']:.1f}%
-    
-    INSTAGRAM:
-    - Atual: R$ {dados.get('investimento_ig_atual', 0):,.2f}
-    - vs Mês: {comparativos['ig_mes']:.1f}%
-    - vs Ano: {comparativos['ig_ano']:.1f}%
-    
-    TIKTOK:
-    - Atual: R$ {dados.get('investimento_tiktok_atual', 0):,.2f}
-    - vs Mês: {comparativos['tiktok_mes']:.1f}%
-    - vs Ano: {comparativos['tiktok_ano']:.1f}%
-    
-    DISPLAY:
-    - Atual: R$ {dados.get('investimento_display_atual', 0):,.2f}
-    - vs Mês: {comparativos['display_mes']:.1f}%
-    - vs Ano: {comparativos['display_ano']:.1f}%
-    
-    YOUTUBE:
-    - Atual: R$ {dados.get('investimento_yt_atual', 0):,.2f}
-    - vs Mês: {comparativos['yt_mes']:.1f}%
-    - vs Ano: {comparativos['yt_ano']:.1f}%
-    
-    PMAX:
-    - Atual: R$ {dados.get('investimento_pmax_atual', 0):,.2f}
-    - vs Mês: {comparativos['pmax_mes']:.1f}%
-    - vs Ano: {comparativos['pmax_ano']:.1f}%
-    
-    EVOLUÇÃO DOS CUSTOS:
-    - CPE: R$ {dados.get('cpe_atual', 0):.2f} (vs R$ {dados.get('cpe_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpe_ano_passado', 0):.2f} ano)
-    - CPC: R$ {dados.get('cpc_atual', 0):.2f} (vs R$ {dados.get('cpc_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpc_ano_passado', 0):.2f} ano)
-    - CPV: R$ {dados.get('cpv_atual', 0):.2f} (vs R$ {dados.get('cpv_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpv_ano_passado', 0):.2f} ano)
-    - CPM: R$ {dados.get('cpm_atual', 0):.2f} (vs R$ {dados.get('cpm_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpm_ano_passado', 0):.2f} ano)
-    
-    Informações de Concorrentes: {dados.get('info_concorrentes', 'Não informado')}
-    
-    Formato: Análise completa com os seguintes tópicos:
-    
-    1. **Visão Geral do Investimento**: Análise da alocação total e tendências
-    2. **Performance por Canal**: Para cada plataforma, analisar ROI e eficiência
-    3. **Evolução dos Custos**: Tendências de CPE, CPC, CPV e CPM
-    4. **Análise de Mix de Mídia**: Distribuição do budget e oportunidades
-    5. **Benchmark vs Concorrência**: Posicionamento competitivo
-    6. **Recomendações de Otimização**: Ações concretas para cada canal
-    
-    Inclua análises específicas baseadas nos comparativos mensais e anuais.
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        prompt = f"""
+        Com base nos dados de mídia paga e comparativos abaixo, crie uma seção de ANÁLISE DE MÍDIAS PAGAS detalhada.
+        
+        Destaques do Período: {destaques}
+        
+        INVESTIMENTO TOTAL:
+        - Atual: R$ {comparativos.get('investimento_total', 0):,.2f}
+        - Mês Passado: R$ {comparativos.get('investimento_total_mes', 0):,.2f} ({comparativos.get('investimento_total_vs_mes', 0):.1f}%)
+        - Ano Passado: R$ {comparativos.get('investimento_total_ano', 0):,.2f} ({comparativos.get('investimento_total_vs_ano', 0):.1f}%)
+        
+        INVESTIMENTOS POR PLATAFORMA (Atual | vs Mês | vs Ano):
+        
+        FACEBOOK:
+        - Atual: R$ {dados.get('investimento_fb_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('fb_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('fb_ano', 0):.1f}%
+        
+        INSTAGRAM:
+        - Atual: R$ {dados.get('investimento_ig_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('ig_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('ig_ano', 0):.1f}%
+        
+        TIKTOK:
+        - Atual: R$ {dados.get('investimento_tiktok_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('tiktok_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('tiktok_ano', 0):.1f}%
+        
+        DISPLAY:
+        - Atual: R$ {dados.get('investimento_display_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('display_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('display_ano', 0):.1f}%
+        
+        YOUTUBE:
+        - Atual: R$ {dados.get('investimento_yt_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('yt_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('yt_ano', 0):.1f}%
+        
+        PMAX:
+        - Atual: R$ {dados.get('investimento_pmax_atual', 0):,.2f}
+        - vs Mês: {comparativos.get('pmax_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('pmax_ano', 0):.1f}%
+        
+        EVOLUÇÃO DOS CUSTOS:
+        - CPE: R$ {dados.get('cpe_atual', 0):.2f} (vs R$ {dados.get('cpe_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpe_ano_passado', 0):.2f} ano)
+        - CPC: R$ {dados.get('cpc_atual', 0):.2f} (vs R$ {dados.get('cpc_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpc_ano_passado', 0):.2f} ano)
+        - CPV: R$ {dados.get('cpv_atual', 0):.2f} (vs R$ {dados.get('cpv_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpv_ano_passado', 0):.2f} ano)
+        - CPM: R$ {dados.get('cpm_atual', 0):.2f} (vs R$ {dados.get('cpm_mes_passado', 0):.2f} mês | vs R$ {dados.get('cpm_ano_passado', 0):.2f} ano)
+        
+        Informações de Concorrentes: {dados.get('info_concorrentes', 'Não informado')}
+        
+        Formato: Análise completa com os seguintes tópicos:
+        
+        1. **Visão Geral do Investimento**: Análise da alocação total e tendências
+        2. **Performance por Canal**: Para cada plataforma, analisar ROI e eficiência
+        3. **Evolução dos Custos**: Tendências de CPE, CPC, CPV e CPM
+        4. **Análise de Mix de Mídia**: Distribuição do budget e oportunidades
+        5. **Benchmark vs Concorrência**: Posicionamento competitivo
+        6. **Recomendações de Otimização**: Ações concretas para cada canal
+        
+        Inclua análises específicas baseadas nos comparativos mensais e anuais.
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar análise de mídias pagas:** {str(e)}"
 
 def gerar_analise_seo(dados: Dict[str, Any], comparativos: Dict) -> str:
     """Gera análise de SEO com comparativos"""
-    
-    prompt = f"""
-    Com base nos dados de SEO abaixo e nos comparativos, crie uma seção de ANÁLISE DE SEO detalhada.
-    
-    MÉTRICAS DE SEO - COMPARATIVO:
-    
-    VISUALIZAÇÕES TOTAIS:
-    - Atual: {dados.get('seo_visualizacoes_atual', 0):,}
-    - vs Mês: {comparativos['seo_visu_mes']:.1f}%
-    - vs Ano: {comparativos['seo_visu_ano']:.1f}%
-    
-    SESSÕES TOTAIS:
-    - Atual: {dados.get('seo_sessoes_atual', 0):,}
-    - vs Mês: {comparativos['seo_sessoes_mes']:.1f}%
-    - vs Ano: {comparativos['seo_sessoes_ano']:.1f}%
-    
-    USUÁRIOS TOTAIS:
-    - Atual: {dados.get('seo_usuarios_atual', 0):,}
-    - vs Mês: {comparativos['seo_usuarios_mes']:.1f}%
-    - vs Ano: {comparativos['seo_usuarios_ano']:.1f}%
-    
-    MÉTRICAS ORGÂNICAS:
-    
-    VISUALIZAÇÕES ORGÂNICAS:
-    - Atual: {dados.get('seo_visualizacoes_org_atual', 0):,}
-    - vs Mês: {comparativos['seo_visu_org_mes']:.1f}%
-    - vs Ano: {comparativos['seo_visu_org_ano']:.1f}%
-    - % do Total: {comparativos['seo_percent_org_visu']:.1f}%
-    
-    SESSÕES ORGÂNICAS:
-    - Atual: {dados.get('seo_sessoes_org_atual', 0):,}
-    - vs Mês: {comparativos['seo_sessoes_org_mes']:.1f}%
-    - vs Ano: {comparativos['seo_sessoes_org_ano']:.1f}%
-    - % do Total: {comparativos['seo_percent_org_sessoes']:.1f}%
-    
-    USUÁRIOS ORGÂNICOS:
-    - Atual: {dados.get('seo_usuarios_org_atual', 0):,}
-    - vs Mês: {comparativos['seo_usuarios_org_mes']:.1f}%
-    - vs Ano: {comparativos['seo_usuarios_org_ano']:.1f}%
-    - % do Total: {comparativos['seo_percent_org_usuarios']:.1f}%
-    
-    TOP 10 PALAVRAS-CHAVE DO MÊS: {", ".join(dados.get('top_palavras_chave', []))}
-    
-    Formato: Análise completa com os seguintes tópicos:
-    
-    1. **Evolução do Tráfego Orgânico**: Análise dos comparativos mensais e anuais
-    2. **Participação do Orgânico**: Percentual do tráfego total e tendências
-    3. **Performance de Palavras-chave**: Análise das principais keywords e oportunidades
-    4. **Saúde Técnica SEO**: Insights baseados nos dados
-    5. **Recomendações de Conteúdo**: Sugestões baseadas nas keywords performáticas
-    6. **Estratégias de Crescimento**: Próximos passos para SEO
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        prompt = f"""
+        Com base nos dados de SEO abaixo e nos comparativos, crie uma seção de ANÁLISE DE SEO detalhada.
+        
+        MÉTRICAS DE SEO - COMPARATIVO:
+        
+        VISUALIZAÇÕES TOTAIS:
+        - Atual: {dados.get('seo_visualizacoes_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_visualizacoes_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_visualizacoes_ano', 0):.1f}%
+        
+        SESSÕES TOTAIS:
+        - Atual: {dados.get('seo_sessoes_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_sessoes_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_sessoes_ano', 0):.1f}%
+        
+        USUÁRIOS TOTAIS:
+        - Atual: {dados.get('seo_usuarios_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_usuarios_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_usuarios_ano', 0):.1f}%
+        
+        MÉTRICAS ORGÂNICAS:
+        
+        VISUALIZAÇÕES ORGÂNICAS:
+        - Atual: {dados.get('seo_visualizacoes_org_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_visualizacoes_org_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_visualizacoes_org_ano', 0):.1f}%
+        - % do Total: {comparativos.get('seo_percent_org_visu', 0):.1f}%
+        
+        SESSÕES ORGÂNICAS:
+        - Atual: {dados.get('seo_sessoes_org_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_sessoes_org_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_sessoes_org_ano', 0):.1f}%
+        - % do Total: {comparativos.get('seo_percent_org_sessoes', 0):.1f}%
+        
+        USUÁRIOS ORGÂNICOS:
+        - Atual: {dados.get('seo_usuarios_org_atual', 0):,}
+        - vs Mês: {comparativos.get('seo_usuarios_org_mes', 0):.1f}%
+        - vs Ano: {comparativos.get('seo_usuarios_org_ano', 0):.1f}%
+        - % do Total: {comparativos.get('seo_percent_org_usuarios', 0):.1f}%
+        
+        TOP 10 PALAVRAS-CHAVE DO MÊS: {", ".join(dados.get('top_palavras_chave', ['N/A']))}
+        
+        Formato: Análise completa com os seguintes tópicos:
+        
+        1. **Evolução do Tráfego Orgânico**: Análise dos comparativos mensais e anuais
+        2. **Participação do Orgânico**: Percentual do tráfego total e tendências
+        3. **Performance de Palavras-chave**: Análise das principais keywords e oportunidades
+        4. **Saúde Técnica SEO**: Insights baseados nos dados
+        5. **Recomendações de Conteúdo**: Sugestões baseadas nas keywords performáticas
+        6. **Estratégias de Crescimento**: Próximos passos para SEO
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar análise de SEO:** {str(e)}"
 
 def gerar_proximos_passos(dados: Dict[str, Any], analises_anteriores: str, comparativos: Dict) -> str:
     """Gera próximos passos e aprendizados baseado em todas as análises"""
-    prompt = f"""
-    Com base em todas as análises anteriores e nos dados comparativos, crie uma seção de PRÓXIMOS PASSOS E APRENDIZADOS.
-    
-    Resumo das Análises: {analises_anteriores[:1500]}
-    
-    DESTAQUES DOS COMPARATIVOS:
-    - Maior crescimento: {max([(k, v) for k, v in comparativos.items() if 'mes' in k or 'ano' in k], key=lambda x: x[1]) if comparativos else 'N/A'}
-    - Maior queda: {min([(k, v) for k, v in comparativos.items() if 'mes' in k or 'ano' in k], key=lambda x: x[1]) if comparativos else 'N/A'}
-    
-    Investimento Total Atual: R$ {comparativos['investimento_total']:,.2f}
-    
-    Formato: Seção dividida em duas partes:
-    
-    1. **APRENDIZADOS DO PERÍODO** (4-5 bullet points):
-       - O que funcionou bem (baseado nos crescimentos)
-       - O que não funcionou (baseado nas quedas)
-       - Insights dos comparativos mensais/anuais
-       - Padrões identificados nos dados
-       - Comportamento do público
-    
-    2. **PRÓXIMOS PASSOS** (5-6 ações concretas):
-       - Ações de curto prazo (próximos 30 dias) com metas específicas
-       - Ações de médio prazo (próximo trimestre)
-       - Recomendações de realocação de budget baseadas nos comparativos
-       - Testes A/B baseados nos aprendizados
-       - Oportunidades identificadas nos canais com melhor performance
-       - Estratégias para canais com performance abaixo do esperado
-    
-    As recomendações devem ser específicas e acionáveis, baseadas nos dados apresentados.
-    """
-    response = modelo_texto.generate_content(prompt)
-    return response.text
+    try:
+        prompt = f"""
+        Com base em todas as análises anteriores e nos dados comparativos, crie uma seção de PRÓXIMOS PASSOS E APRENDIZADOS.
+        
+        Resumo das Análises: {analises_anteriores[:1500]}
+        
+        DESTAQUES DOS COMPARATIVOS:
+        - Investimento Total Atual: R$ {comparativos.get('investimento_total', 0):,.2f}
+        - Variação vs Mês: {comparativos.get('investimento_total_vs_mes', 0):.1f}%
+        - Variação vs Ano: {comparativos.get('investimento_total_vs_ano', 0):.1f}%
+        
+        Formato: Seção dividida em duas partes:
+        
+        1. **APRENDIZADOS DO PERÍODO** (4-5 bullet points):
+           - O que funcionou bem (baseado nos crescimentos)
+           - O que não funcionou (baseado nas quedas)
+           - Insights dos comparativos mensais/anuais
+           - Padrões identificados nos dados
+           - Comportamento do público
+        
+        2. **PRÓXIMOS PASSOS** (5-6 ações concretas):
+           - Ações de curto prazo (próximos 30 dias) com metas específicas
+           - Ações de médio prazo (próximo trimestre)
+           - Recomendações de realocação de budget baseadas nos comparativos
+           - Testes A/B baseados nos aprendizados
+           - Oportunidades identificadas nos canais com melhor performance
+           - Estratégias para canais com performance abaixo do esperado
+        
+        As recomendações devem ser específicas e acionáveis, baseadas nos dados apresentados.
+        """
+        response = modelo_texto.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        return f"**Erro ao gerar próximos passos:** {str(e)}"
 
 # Abas principais
 tab_input, tab_relatorio = st.tabs(["📝 Inserir Dados", "📊 Relatório Gerado"])
@@ -423,23 +482,25 @@ with tab_input:
     with st.expander("📋 Informações Básicas", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            info_empresa = st.text_input("Nome da Empresa/Marca", value="Empresa Exemplo")
-            periodo_relatorio = st.text_input("Período do Relatório", value="Janeiro/2024")
+            info_empresa = st.text_input("Nome da Empresa/Marca", value="Empresa Exemplo", key="info_empresa")
+            periodo_relatorio = st.text_input("Período do Relatório", value="Janeiro/2024", key="periodo_relatorio")
         with col2:
-            responsavel = st.text_input("Responsável pelo Relatório", value="Analista de Marketing")
-            data_elaboracao = st.date_input("Data de Elaboração", value=datetime.now())
+            responsavel = st.text_input("Responsável pelo Relatório", value="Analista de Marketing", key="responsavel")
+            data_elaboracao = st.date_input("Data de Elaboração", value=datetime.now(), key="data_elaboracao")
     
     # Contexto e Concorrentes
     with st.expander("📌 Contexto e Concorrência", expanded=True):
         contexto_adicional = st.text_area(
             "Contexto Adicional da Marca/Período",
             placeholder="Ex: Lançamento de produto, sazonalidade, campanha especial, etc.",
-            value="Campanha de lançamento de novo produto com foco em awareness"
+            value="Campanha de lançamento de novo produto com foco em awareness",
+            key="contexto_adicional"
         )
         info_concorrentes = st.text_area(
             "Informações de Concorrentes",
             placeholder="Movimentações de concorrentes, share of voice, etc.",
-            value="Concorrente principal aumentou investimento em 20% no período"
+            value="Concorrente principal aumentou investimento em 20% no período",
+            key="info_concorrentes"
         )
     
     # Métricas Principais
@@ -525,7 +586,8 @@ with tab_input:
         palavras_chave = st.text_area(
             "Digite as palavras-chave (uma por linha)",
             height=150,
-            value="marketing digital\ngestão de tráfego\nmídia paga\nseo\ngoogle ads\nfacebook ads\ninstagram marketing\ntiktok ads\necommerce\ndigital analytics"
+            value="marketing digital\ngestão de tráfego\nmídia paga\nseo\ngoogle ads\nfacebook ads\ninstagram marketing\ntiktok ads\necommerce\ndigital analytics",
+            key="palavras_chave"
         )
         lista_palavras_chave = [p.strip() for p in palavras_chave.split('\n') if p.strip()][:10]
     
@@ -535,14 +597,19 @@ with tab_input:
         uploaded_files = st.file_uploader(
             "Escolha as imagens",
             type=['png', 'jpg', 'jpeg'],
-            accept_multiple_files=True
+            accept_multiple_files=True,
+            key="image_uploader"
         )
         
         if uploaded_files:
             st.session_state.uploaded_images = uploaded_files
-            st.success(f"{len(uploaded_files)} imagem(ns) carregada(s) com sucesso!")
-            for uploaded_file in uploaded_files:
-                st.image(uploaded_file, width=150, caption=uploaded_file.name)
+            st.success(f"✅ {len(uploaded_files)} imagem(ns) carregada(s) com sucesso!")
+            
+            # Mostrar miniaturas
+            cols = st.columns(min(len(uploaded_files), 4))
+            for idx, uploaded_file in enumerate(uploaded_files):
+                with cols[idx % 4]:
+                    st.image(uploaded_file, width=150, caption=uploaded_file.name[:20])
     
     # Botão para gerar relatório
     col1, col2, col3 = st.columns([1, 2, 1])
@@ -556,8 +623,11 @@ with tab_relatorio:
             # Coletar todos os dados do estado da sessão
             dados = {}
             for key in st.session_state.keys():
-                if key not in ['relatorio_completo', 'uploaded_images']:
-                    dados[key] = st.session_state[key]
+                if key not in ['relatorio_completo', 'uploaded_images', 'image_uploader']:
+                    try:
+                        dados[key] = st.session_state[key]
+                    except:
+                        pass
             
             # Adicionar dados manuais
             dados['info_empresa'] = info_empresa
@@ -571,7 +641,7 @@ with tab_relatorio:
             # Processar imagens (apenas agora, após o botão)
             descricoes_imagens = []
             if st.session_state.uploaded_images:
-                with st.spinner("Analisando criativos com IA..."):
+                with st.spinner("🔍 Analisando criativos com IA..."):
                     descricoes_imagens = descrever_todas_imagens(st.session_state.uploaded_images)
             
             # Calcular todos os comparativos
@@ -636,25 +706,28 @@ with tab_relatorio:
                 comparativos['investimento_total_ano']
             )
             
-            # SEO comparativos
+            # SEO comparativos - com tratamento para valores None
             seo_keys = ['visualizacoes', 'sessoes', 'usuarios', 'visualizacoes_org', 'sessoes_org', 'usuarios_org']
             for seo_key in seo_keys:
-                comparativos[f'seo_{seo_key}_mes'] = calcular_variacao(
-                    dados.get(f'seo_{seo_key}_atual', 0),
-                    dados.get(f'seo_{seo_key}_mes_passado', 0)
-                )
-                comparativos[f'seo_{seo_key}_ano'] = calcular_variacao(
-                    dados.get(f'seo_{seo_key}_atual', 0),
-                    dados.get(f'seo_{seo_key}_ano_passado', 0)
-                )
+                # Garantir que os valores existam e sejam números
+                atual = float(dados.get(f'seo_{seo_key}_atual', 0) or 0)
+                mes_passado = float(dados.get(f'seo_{seo_key}_mes_passado', 0) or 0)
+                ano_passado = float(dados.get(f'seo_{seo_key}_ano_passado', 0) or 0)
+                
+                comparativos[f'seo_{seo_key}_mes'] = calcular_variacao(atual, mes_passado)
+                comparativos[f'seo_{seo_key}_ano'] = calcular_variacao(atual, ano_passado)
             
-            # Percentuais do orgânico
-            comparativos['seo_percent_org_visu'] = (float(dados.get('seo_visualizacoes_org_atual', 0) or 0) / float(dados.get('seo_visualizacoes_atual', 1) or 1)) * 100
-            comparativos['seo_percent_org_sessoes'] = (float(dados.get('seo_sessoes_org_atual', 0) or 0) / float(dados.get('seo_sessoes_atual', 1) or 1)) * 100
-            comparativos['seo_percent_org_usuarios'] = (float(dados.get('seo_usuarios_org_atual', 0) or 0) / float(dados.get('seo_usuarios_atual', 1) or 1)) * 100
+            # Percentuais do orgânico - com tratamento de divisão por zero
+            total_visu = float(dados.get('seo_visualizacoes_atual', 1) or 1)
+            total_sessoes = float(dados.get('seo_sessoes_atual', 1) or 1)
+            total_usuarios = float(dados.get('seo_usuarios_atual', 1) or 1)
+            
+            comparativos['seo_percent_org_visu'] = (float(dados.get('seo_visualizacoes_org_atual', 0) or 0) / total_visu) * 100
+            comparativos['seo_percent_org_sessoes'] = (float(dados.get('seo_sessoes_org_atual', 0) or 0) / total_sessoes) * 100
+            comparativos['seo_percent_org_usuarios'] = (float(dados.get('seo_usuarios_org_atual', 0) or 0) / total_usuarios) * 100
             
             # Gerar relatório completo
-            with st.spinner("Gerando relatório executivo... (isso pode levar alguns minutos)"):
+            with st.spinner("📝 Gerando relatório executivo... (isso pode levar alguns minutos)"):
                 
                 # Fluxo sequencial de geração
                 contexto = gerar_contexto_atual(dados, comparativos)
@@ -680,6 +753,8 @@ with tab_relatorio:
                 # Guardar comparativos e descrições para exibição
                 st.session_state.relatorio_completo['comparativos'] = comparativos
                 st.session_state.relatorio_completo['descricoes_imagens'] = descricoes_imagens
+                
+                st.success("✅ Relatório gerado com sucesso!")
         
         # Exibir relatório
         if st.session_state.relatorio_completo:
@@ -765,7 +840,8 @@ with tab_relatorio:
                     cols = st.columns(min(len(st.session_state.relatorio_completo['descricoes_imagens']), 4))
                     for idx, img in enumerate(st.session_state.relatorio_completo['descricoes_imagens']):
                         with cols[idx % 4]:
-                            st.image(img['bytes'], width=150, caption=img['nome'][:20])
+                            if img['bytes']:
+                                st.image(img['bytes'], width=150, caption=img['nome'][:20])
             
             with st.container():
                 st.markdown("### 💰 Mídias Pagas")
