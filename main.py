@@ -80,8 +80,8 @@ st.markdown("""
 # Inicializar Gemini
 gemini_api_key = os.getenv("GEM_API_KEY")
 genai.configure(api_key=gemini_api_key)
-modelo_texto = genai.GenerativeModel("gemini-1.5-flash")
-modelo_visao = genai.GenerativeModel("gemini-1.5-flash")
+modelo_texto = genai.GenerativeModel("gemini-2.5-flash")
+modelo_visao = genai.GenerativeModel("gemini-2.5-flash")
 
 # Título do aplicativo
 st.title("📊 Gerador de Relatório Executivo")
