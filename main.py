@@ -100,7 +100,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Inicializar Gemini
+# Inicializar Gemini com modelo 2.5 Flash
 gemini_api_key = os.getenv("GEM_API_KEY")
 if not gemini_api_key:
     st.error("⚠️ GEM_API_KEY não encontrada. Por favor, configure a variável de ambiente.")
@@ -125,8 +125,12 @@ if 'relatorio_completo' not in st.session_state:
     st.session_state.relatorio_completo = {}
 if 'uploaded_images' not in st.session_state:
     st.session_state.uploaded_images = []
-if 'dados_input' not in st.session_state:
-    st.session_state.dados_input = {}
+if 'dados_relatorio' not in st.session_state:
+    st.session_state.dados_relatorio = {}
+if 'comparativos_relatorio' not in st.session_state:
+    st.session_state.comparativos_relatorio = {}
+if 'descricoes_imagens' not in st.session_state:
+    st.session_state.descricoes_imagens = []
 
 # Função para calcular variações com segurança
 def calcular_variacao(atual, anterior):
@@ -482,11 +486,11 @@ with tab_input:
     with st.expander("📋 Informações Básicas", expanded=True):
         col1, col2 = st.columns(2)
         with col1:
-            info_empresa = st.text_input("Nome da Empresa/Marca", value="Empresa Exemplo", key="info_empresa")
-            periodo_relatorio = st.text_input("Período do Relatório", value="Janeiro/2024", key="periodo_relatorio")
+            info_empresa = st.text_input("Nome da Empresa/Marca", value="Empresa Exemplo", key="info_empresa_input")
+            periodo_relatorio = st.text_input("Período do Relatório", value="Janeiro/2024", key="periodo_relatorio_input")
         with col2:
-            responsavel = st.text_input("Responsável pelo Relatório", value="Analista de Marketing", key="responsavel")
-            data_elaboracao = st.date_input("Data de Elaboração", value=datetime.now(), key="data_elaboracao")
+            responsavel = st.text_input("Responsável pelo Relatório", value="Analista de Marketing", key="responsavel_input")
+            data_elaboracao = st.date_input("Data de Elaboração", value=datetime.now(), key="data_elaboracao_input")
     
     # Contexto e Concorrentes
     with st.expander("📌 Contexto e Concorrência", expanded=True):
@@ -494,13 +498,13 @@ with tab_input:
             "Contexto Adicional da Marca/Período",
             placeholder="Ex: Lançamento de produto, sazonalidade, campanha especial, etc.",
             value="Campanha de lançamento de novo produto com foco em awareness",
-            key="contexto_adicional"
+            key="contexto_adicional_input"
         )
         info_concorrentes = st.text_area(
             "Informações de Concorrentes",
             placeholder="Movimentações de concorrentes, share of voice, etc.",
             value="Concorrente principal aumentou investimento em 20% no período",
-            key="info_concorrentes"
+            key="info_concorrentes_input"
         )
     
     # Métricas Principais
@@ -587,7 +591,7 @@ with tab_input:
             "Digite as palavras-chave (uma por linha)",
             height=150,
             value="marketing digital\ngestão de tráfego\nmídia paga\nseo\ngoogle ads\nfacebook ads\ninstagram marketing\ntiktok ads\necommerce\ndigital analytics",
-            key="palavras_chave"
+            key="palavras_chave_input"
         )
         lista_palavras_chave = [p.strip() for p in palavras_chave.split('\n') if p.strip()][:10]
     
@@ -623,9 +627,13 @@ with tab_relatorio:
             # Coletar todos os dados do estado da sessão
             dados = {}
             for key in st.session_state.keys():
-                if key not in ['relatorio_completo', 'uploaded_images', 'image_uploader']:
+                if key not in ['relatorio_completo', 'uploaded_images', 'image_uploader', 'dados_relatorio', 'comparativos_relatorio', 'descricoes_imagens']:
                     try:
-                        dados[key] = st.session_state[key]
+                        # Pegar valores dos inputs
+                        if key.endswith('_input'):
+                            dados[key.replace('_input', '')] = st.session_state[key]
+                        else:
+                            dados[key] = st.session_state[key]
                     except:
                         pass
             
@@ -638,11 +646,15 @@ with tab_relatorio:
             dados['info_concorrentes'] = info_concorrentes
             dados['top_palavras_chave'] = lista_palavras_chave
             
+            # Salvar dados no estado da sessão para uso posterior
+            st.session_state.dados_relatorio = dados
+            
             # Processar imagens (apenas agora, após o botão)
             descricoes_imagens = []
             if st.session_state.uploaded_images:
                 with st.spinner("🔍 Analisando criativos com IA..."):
                     descricoes_imagens = descrever_todas_imagens(st.session_state.uploaded_images)
+                    st.session_state.descricoes_imagens = descricoes_imagens
             
             # Calcular todos os comparativos
             comparativos = {}
@@ -726,6 +738,9 @@ with tab_relatorio:
             comparativos['seo_percent_org_sessoes'] = (float(dados.get('seo_sessoes_org_atual', 0) or 0) / total_sessoes) * 100
             comparativos['seo_percent_org_usuarios'] = (float(dados.get('seo_usuarios_org_atual', 0) or 0) / total_usuarios) * 100
             
+            # Salvar comparativos no estado da sessão
+            st.session_state.comparativos_relatorio = comparativos
+            
             # Gerar relatório completo
             with st.spinner("📝 Gerando relatório executivo... (isso pode levar alguns minutos)"):
                 
@@ -750,24 +765,25 @@ with tab_relatorio:
                 proximos_passos = gerar_proximos_passos(dados, analises_consolidadas, comparativos)
                 st.session_state.relatorio_completo['proximos_passos'] = proximos_passos
                 
-                # Guardar comparativos e descrições para exibição
-                st.session_state.relatorio_completo['comparativos'] = comparativos
-                st.session_state.relatorio_completo['descricoes_imagens'] = descricoes_imagens
-                
                 st.success("✅ Relatório gerado com sucesso!")
         
         # Exibir relatório
         if st.session_state.relatorio_completo:
+            # Recuperar dados do estado da sessão
+            dados_exibicao = st.session_state.dados_relatorio
+            comparativos_exibicao = st.session_state.comparativos_relatorio
+            descricoes_imagens_exibicao = st.session_state.descricoes_imagens
+            
             st.markdown("## 📊 RELATÓRIO EXECUTIVO")
             
             # Cabeçalho
             col1, col2 = st.columns(2)
             with col1:
-                st.markdown(f"**Empresa/Marca:** {dados.get('info_empresa', 'N/A')}")
-                st.markdown(f"**Período:** {dados.get('periodo_relatorio', 'N/A')}")
+                st.markdown(f"**Empresa/Marca:** {dados_exibicao.get('info_empresa', 'N/A')}")
+                st.markdown(f"**Período:** {dados_exibicao.get('periodo_relatorio', 'N/A')}")
             with col2:
-                st.markdown(f"**Responsável:** {dados.get('responsavel', 'N/A')}")
-                st.markdown(f"**Data:** {dados.get('data_elaboracao', 'N/A')}")
+                st.markdown(f"**Responsável:** {dados_exibicao.get('responsavel', 'N/A')}")
+                st.markdown(f"**Data:** {dados_exibicao.get('data_elaboracao', 'N/A')}")
             
             st.markdown("---")
             
@@ -781,37 +797,35 @@ with tab_relatorio:
                 st.markdown(st.session_state.relatorio_completo.get('destaques', ''))
             
             # Cards de métricas rápidas com comparativos
-            comparativos = st.session_state.relatorio_completo.get('comparativos', {})
-            
             col1, col2, col3, col4 = st.columns(4)
             with col1:
-                invest_total = comparativos.get('investimento_total', 0)
-                var_invest_mes = comparativos.get('investimento_total_vs_mes', 0)
+                invest_total = comparativos_exibicao.get('investimento_total', 0)
+                var_invest_mes = comparativos_exibicao.get('investimento_total_vs_mes', 0)
                 st.metric(
                     "Investimento Total", 
                     f"R$ {invest_total:,.2f}",
                     delta=f"{var_invest_mes:+.1f}% vs mês"
                 )
             with col2:
-                visu_atual = dados.get('visualizacoes_atual', 0)
+                visu_atual = dados_exibicao.get('visualizacoes_atual', 0)
                 st.metric(
                     "Visualizações", 
                     f"{visu_atual:,}",
-                    delta=f"{comparativos.get('visu_mes', 0):+.1f}% vs mês"
+                    delta=f"{comparativos_exibicao.get('visu_mes', 0):+.1f}% vs mês"
                 )
             with col3:
-                cliques_atual = dados.get('cliques_atual', 0)
+                cliques_atual = dados_exibicao.get('cliques_atual', 0)
                 st.metric(
                     "Cliques", 
                     f"{cliques_atual:,}",
-                    delta=f"{comparativos.get('cli_mes', 0):+.1f}% vs mês"
+                    delta=f"{comparativos_exibicao.get('cli_mes', 0):+.1f}% vs mês"
                 )
             with col4:
-                eng_atual = dados.get('engajamentos_atual', 0)
+                eng_atual = dados_exibicao.get('engajamentos_atual', 0)
                 st.metric(
                     "Engajamentos", 
                     f"{eng_atual:,}",
-                    delta=f"{comparativos.get('eng_mes', 0):+.1f}% vs mês"
+                    delta=f"{comparativos_exibicao.get('eng_mes', 0):+.1f}% vs mês"
                 )
             
             # Tabela de comparativos rápidos
@@ -819,29 +833,29 @@ with tab_relatorio:
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("**vs Mês Passado**")
-                    st.markdown(f"- Visualizações: {formatar_variacao(comparativos.get('visu_mes', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Impressões: {formatar_variacao(comparativos.get('imp_mes', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Cliques: {formatar_variacao(comparativos.get('cli_mes', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Engajamentos: {formatar_variacao(comparativos.get('eng_mes', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Visualizações: {formatar_variacao(comparativos_exibicao.get('visu_mes', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Impressões: {formatar_variacao(comparativos_exibicao.get('imp_mes', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Cliques: {formatar_variacao(comparativos_exibicao.get('cli_mes', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Engajamentos: {formatar_variacao(comparativos_exibicao.get('eng_mes', 0))}", unsafe_allow_html=True)
                 with col2:
                     st.markdown("**vs Ano Passado**")
-                    st.markdown(f"- Visualizações: {formatar_variacao(comparativos.get('visu_ano', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Impressões: {formatar_variacao(comparativos.get('imp_ano', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Cliques: {formatar_variacao(comparativos.get('cli_ano', 0))}", unsafe_allow_html=True)
-                    st.markdown(f"- Engajamentos: {formatar_variacao(comparativos.get('eng_ano', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Visualizações: {formatar_variacao(comparativos_exibicao.get('visu_ano', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Impressões: {formatar_variacao(comparativos_exibicao.get('imp_ano', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Cliques: {formatar_variacao(comparativos_exibicao.get('cli_ano', 0))}", unsafe_allow_html=True)
+                    st.markdown(f"- Engajamentos: {formatar_variacao(comparativos_exibicao.get('eng_ano', 0))}", unsafe_allow_html=True)
             
             with st.container():
                 st.markdown("### 🖼️ Análise de Criativos")
                 st.markdown(st.session_state.relatorio_completo.get('criativos', ''))
                 
                 # Mostrar miniaturas das imagens
-                if st.session_state.relatorio_completo.get('descricoes_imagens'):
+                if descricoes_imagens_exibicao:
                     st.markdown("**Criativos Analisados:**")
-                    cols = st.columns(min(len(st.session_state.relatorio_completo['descricoes_imagens']), 4))
-                    for idx, img in enumerate(st.session_state.relatorio_completo['descricoes_imagens']):
+                    cols = st.columns(min(len(descricoes_imagens_exibicao), 4))
+                    for idx, img in enumerate(descricoes_imagens_exibicao):
                         with cols[idx % 4]:
-                            if img['bytes']:
-                                st.image(img['bytes'], width=150, caption=img['nome'][:20])
+                            if img.get('bytes'):
+                                st.image(img['bytes'], width=150, caption=img.get('nome', 'Imagem')[:20])
             
             with st.container():
                 st.markdown("### 💰 Mídias Pagas")
@@ -852,9 +866,9 @@ with tab_relatorio:
                 st.markdown(st.session_state.relatorio_completo.get('seo', ''))
                 
                 # Exibir palavras-chave
-                if dados.get('top_palavras_chave'):
+                if dados_exibicao.get('top_palavras_chave'):
                     st.markdown("**Top 10 Palavras-Chave do Mês:**")
-                    palavras_html = "".join([f'<span class="keyword-badge">{kw}</span>' for kw in dados['top_palavras_chave']])
+                    palavras_html = "".join([f'<span class="keyword-badge">{kw}</span>' for kw in dados_exibicao['top_palavras_chave']])
                     st.markdown(f'<div>{palavras_html}</div>', unsafe_allow_html=True)
             
             with st.container():
@@ -863,11 +877,11 @@ with tab_relatorio:
             
             # Botão para baixar relatório
             relatorio_completo_texto = f"""
-# RELATÓRIO EXECUTIVO - {dados.get('info_empresa', 'N/A')}
+# RELATÓRIO EXECUTIVO - {dados_exibicao.get('info_empresa', 'N/A')}
 
-**Período:** {dados.get('periodo_relatorio', 'N/A')}
-**Responsável:** {dados.get('responsavel', 'N/A')}
-**Data:** {dados.get('data_elaboracao', 'N/A')}
+**Período:** {dados_exibicao.get('periodo_relatorio', 'N/A')}
+**Responsável:** {dados_exibicao.get('responsavel', 'N/A')}
+**Data:** {dados_exibicao.get('data_elaboracao', 'N/A')}
 
 ## 📌 Contexto Atual
 {st.session_state.relatorio_completo.get('contexto_atual', '')}
@@ -891,7 +905,7 @@ with tab_relatorio:
             st.download_button(
                 label="📥 Baixar Relatório Completo",
                 data=relatorio_completo_texto,
-                file_name=f"relatorio_executivo_{dados.get('info_empresa', 'empresa').replace(' ', '_')}_{dados.get('periodo_relatorio', 'periodo').replace('/', '_')}.md",
+                file_name=f"relatorio_executivo_{dados_exibicao.get('info_empresa', 'empresa').replace(' ', '_')}_{dados_exibicao.get('periodo_relatorio', 'periodo').replace('/', '_')}.md",
                 mime="text/markdown"
             )
     else:
