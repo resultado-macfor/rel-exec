@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import google.generativeai as genai
 import os
-import json
 import re
 from datetime import datetime
 from PIL import Image
@@ -49,8 +48,7 @@ chaves_sessao = [
     'dados_processados', 'contexto_atual', 'destaques', 'analise_criativos',
     'analise_midias_pagas', 'analise_seo', 'proximos_passos',
     'diagnostico_eficiencia', 'red_flags', 'mapa_oportunidades',
-    'relatorio_cliente', 'slides_cliente', 'slides_interno',
-    'conteudo_html_cliente', 'conteudo_html_interno'
+    'relatorio_cliente', 'slides_cliente', 'slides_interno'
 ]
 
 for chave in chaves_sessao:
@@ -227,8 +225,8 @@ def fetch_bigquery_data():
 # INICIALIZAÇÃO DOS MODELOS
 # =============================================================================
 
-# Gemini (sempre usado para visão/imagens)
-gemini_api_key = os.getenv("GEM_API_KEY")
+# Gemini (sempre usado para visão/imagens + fallback)
+gemini_api_key = os.getenv("GEM_API_KEY") or st.secrets.get("GEM_API_KEY", "")
 genai.configure(api_key=gemini_api_key)
 modelo_gemini = genai.GenerativeModel("gemini-2.5-flash")
 modelo_visao = genai.GenerativeModel("gemini-2.5-flash")
@@ -243,14 +241,19 @@ elif os.getenv("ANTH_KEY"):
 cliente_anthropic = Anthropic(api_key=anthropic_api_key) if anthropic_api_key else None
 
 def gerar_texto(prompt, modelo_escolhido="Gemini"):
-    """Roteia a geração de texto para o modelo escolhido pelo usuário."""
+    """Roteia a geração de texto para o modelo escolhido. Usa Gemini como fallback silencioso."""
     if modelo_escolhido == "Claude (Anthropic)" and cliente_anthropic:
-        response = cliente_anthropic.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=8096,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return response.content[0].text
+        try:
+            response = cliente_anthropic.messages.create(
+                model="claude-sonnet-4-20250514",
+                max_tokens=8096,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            return response.content[0].text
+        except Exception:
+            # Fallback silencioso para Gemini
+            response = modelo_gemini.generate_content(prompt)
+            return response.text
     else:
         response = modelo_gemini.generate_content(prompt)
         return response.text
@@ -1934,472 +1937,6 @@ def compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_m
     return gerar_texto(prompt, modelo_escolhido)
 
 
-def gerar_conteudo_slides_html(contexto_atual, destaques, analise_criativos, analise_midias_pagas,
-                                analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades,
-                                proximos_passos, dados, tipo="cliente", modelo_escolhido="Gemini"):
-    """Gera conteúdo impactante e conciso para slides HTML."""
-
-    if tipo == "cliente":
-        instrucao = """
-        Tom: Consultivo, confiante, orientado a valor. Cada slide vende a competência da Macfor.
-        NÃO inclua: autocríticas, red flags, problemas internos.
-        Enquadre tudo como resultado, conquista ou oportunidade estratégica identificada.
-        """
-    else:
-        instrucao = """
-        Tom: Direto, analítico, sem filtros. Inclua red flags, autocríticas e riscos.
-        Cada slide deve ter honestidade brutal sobre performance e gaps.
-        """
-
-    prompt = f"""
-    Você é um estrategista sênior criando conteúdo para slides de uma APRESENTAÇÃO VISUAL IMPACTANTE.
-    {instrucao}
-
-    **DADOS DISPONÍVEIS:**
-    - Investimento: R$ {dados.get('spend_atual', 0):,.0f} | MoM: {dados.get('var_invest_mes', 0):+.1f}% | YoY: {dados.get('var_invest_ano', 0):+.1f}%
-    - Cliques: {dados.get('cli_atual', 0):,} | MoM: {dados.get('var_cli_mes', 0):+.1f}%
-    - Impressões: {dados.get('imp_atual', 0):,} | MoM: {dados.get('var_imp_mes', 0):+.1f}%
-    - CTR: {dados.get('ctr_atual', 0):.2f}% | MoM: {dados.get('var_ctr_mes', 0):+.1f}%
-    - Alcance: {dados.get('reach_atual', 0):,} | MoM: {dados.get('var_reach_mes', 0):+.1f}%
-    - Sessões: {dados.get('sess_atual', 0):,} | MoM: {dados.get('var_sess_mes', 0):+.1f}%
-    - Engajamentos: {dados.get('eng_atual', 0):,} | MoM: {dados.get('var_eng_mes', 0):+.1f}%
-
-    **INTELIGÊNCIA:**
-    Contexto: {contexto_atual[:800]}
-    Destaques: {destaques[:800]}
-    Criativos: {analise_criativos[:500]}
-    Mídias Pagas: {analise_midias_pagas[:500]}
-    SEO: {analise_seo[:500]}
-    {"Diagnóstico: " + diagnostico_eficiencia[:500] if tipo == "interno" else ""}
-    {"Red Flags: " + red_flags[:500] if tipo == "interno" else ""}
-    Oportunidades: {mapa_oportunidades[:500]}
-    Próximos Passos: {proximos_passos[:500]}
-
-    **FORMATO OBRIGATÓRIO — Responda EXATAMENTE neste formato JSON (array de objetos):**
-
-    ```json
-    [
-      {{
-        "titulo": "Relatório Executivo | Syngenta",
-        "subtitulo": "Performance Digital — Mês/Ano",
-        "tipo": "capa"
-      }},
-      {{
-        "titulo": "Sumário Executivo",
-        "headline": "Uma frase impactante de no máximo 15 palavras sobre o período",
-        "bullets": ["Insight 1 com número", "Insight 2 com número", "Insight 3 com número"],
-        "destaque_numero": "R$ XX.XXX",
-        "destaque_label": "Investimento Total",
-        "tipo": "sumario"
-      }},
-      {{
-        "titulo": "Panorama de Performance",
-        "headline": "Frase curta sobre a tendência geral",
-        "metricas": [
-          {{"nome": "Investimento", "valor": "R$ XX.XXX", "variacao": "+X.X%"}},
-          {{"nome": "Cliques", "valor": "XX.XXX", "variacao": "+X.X%"}},
-          {{"nome": "Impressões", "valor": "XX.XXX", "variacao": "+X.X%"}},
-          {{"nome": "CTR", "valor": "X.XX%", "variacao": "+X.X%"}}
-        ],
-        "tipo": "metricas"
-      }},
-      {{
-        "titulo": "{"Conquistas do Período" if tipo == "cliente" else "Diagnóstico Operacional"}",
-        "headline": "Frase impactante",
-        "bullets": ["Ponto 1", "Ponto 2", "Ponto 3", "Ponto 4"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "{"Inteligência de Mercado" if tipo == "cliente" else "Red Flags & Alertas"}",
-        "headline": "Frase impactante",
-        "bullets": ["Ponto 1", "Ponto 2", "Ponto 3"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "Análise de Criativos",
-        "headline": "Frase sobre performance criativa",
-        "bullets": ["Insight 1", "Insight 2", "Insight 3"],
-        "destaque_numero": "X",
-        "destaque_label": "peças analisadas",
-        "tipo": "destaque"
-      }},
-      {{
-        "titulo": "Mídias Pagas",
-        "headline": "Frase sobre eficiência de mídia",
-        "bullets": ["Canal 1: resultado", "Canal 2: resultado", "Canal 3: resultado"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "{"Eficiência do Investimento" if tipo == "cliente" else "ROI & Produtividade"}",
-        "headline": "Frase sobre retorno",
-        "bullets": ["Insight 1", "Insight 2", "Insight 3"],
-        "destaque_numero": "X.X%",
-        "destaque_label": "Eficiência geral",
-        "tipo": "destaque"
-      }},
-      {{
-        "titulo": "SEO & Conteúdo",
-        "headline": "Frase sobre crescimento orgânico",
-        "bullets": ["Insight 1", "Insight 2", "Insight 3"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "Oportunidades Identificadas",
-        "headline": "Frase sobre potencial",
-        "bullets": ["Oportunidade 1", "Oportunidade 2", "Oportunidade 3"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "Próximos Passos",
-        "headline": "Frase sobre direcionamento",
-        "bullets": ["30 dias: ação", "60 dias: ação", "90 dias: ação"],
-        "tipo": "lista"
-      }},
-      {{
-        "titulo": "{"Obrigado | Macfor" if tipo == "cliente" else "Plano de Ação & Responsáveis"}",
-        "subtitulo": "{"macfor.com.br | Inteligência Digital" if tipo == "cliente" else "Alinhamento de execução"}",
-        "tipo": "{"encerramento" if tipo == "cliente" else "lista"}"{', "bullets": ["Ação 1 — Responsável", "Ação 2 — Responsável"]' if tipo == "interno" else ''}
-      }}
-    ]
-    ```
-
-    Use os DADOS REAIS fornecidos acima. Cada bullet deve ter no máximo 20 palavras.
-    Headlines devem ser IMPACTANTES e transmitir AUTORIDADE.
-    Responda APENAS com o JSON, sem texto antes ou depois.
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-
-def gerar_apresentacao_html(conteudo_json_str, tipo="cliente"):
-    """Gera HTML/CSS completo de apresentação de slides navegável."""
-
-    # Parse do JSON gerado pela IA
-    try:
-        # Extrair JSON do texto (pode vir com ```json ... ```)
-        json_match = re.search(r'\[.*\]', conteudo_json_str, re.DOTALL)
-        if json_match:
-            slides_data = json.loads(json_match.group())
-        else:
-            slides_data = json.loads(conteudo_json_str)
-    except (json.JSONDecodeError, AttributeError):
-        # Fallback: gerar slides mínimos
-        slides_data = [
-            {"titulo": "Relatório Executivo | Syngenta", "subtitulo": "Macfor Inteligência Digital", "tipo": "capa"},
-            {"titulo": "Conteúdo", "headline": "O conteúdo dos slides não pôde ser processado.", "bullets": ["Verifique os dados de entrada."], "tipo": "lista"}
-        ]
-
-    # Gerar HTML dos slides
-    slides_html_parts = []
-    for i, slide in enumerate(slides_data):
-        tipo_slide = slide.get('tipo', 'lista')
-        titulo = slide.get('titulo', '')
-        subtitulo = slide.get('subtitulo', '')
-        headline = slide.get('headline', '')
-        bullets = slide.get('bullets', [])
-        metricas = slide.get('metricas', [])
-        destaque_numero = slide.get('destaque_numero', '')
-        destaque_label = slide.get('destaque_label', '')
-
-        inner = ""
-
-        if tipo_slide == "capa":
-            inner = f"""
-            <div class="slide-capa">
-                <div class="capa-linha-top"></div>
-                <div class="capa-logo">MACFOR</div>
-                <h1 class="capa-titulo">{titulo}</h1>
-                <p class="capa-subtitulo">{subtitulo}</p>
-                <div class="capa-footer">{'Preparado para Syngenta' if tipo == 'cliente' else 'Review Interno — Equipe Macfor'}</div>
-            </div>
-            """
-        elif tipo_slide == "sumario":
-            bullets_html = "".join(f'<li>{b}</li>' for b in bullets)
-            inner = f"""
-            <div class="slide-content">
-                <h2>{titulo}</h2>
-                <p class="slide-headline">{headline}</p>
-                <div class="destaque-box">
-                    <span class="destaque-numero">{destaque_numero}</span>
-                    <span class="destaque-label">{destaque_label}</span>
-                </div>
-                <ul class="slide-bullets">{bullets_html}</ul>
-            </div>
-            """
-        elif tipo_slide == "metricas":
-            cards = ""
-            for m in metricas:
-                var_val = m.get('variacao', '0%')
-                cor_var = '#27AE60' if '+' in str(var_val) else '#E74C3C'
-                cards += f"""
-                <div class="metrica-card">
-                    <div class="metrica-nome">{m.get('nome', '')}</div>
-                    <div class="metrica-valor">{m.get('valor', '')}</div>
-                    <div class="metrica-var" style="color:{cor_var}">{var_val}</div>
-                </div>
-                """
-            inner = f"""
-            <div class="slide-content">
-                <h2>{titulo}</h2>
-                <p class="slide-headline">{headline}</p>
-                <div class="metricas-grid">{cards}</div>
-            </div>
-            """
-        elif tipo_slide == "destaque":
-            bullets_html = "".join(f'<li>{b}</li>' for b in bullets)
-            inner = f"""
-            <div class="slide-content">
-                <h2>{titulo}</h2>
-                <p class="slide-headline">{headline}</p>
-                <div class="destaque-box">
-                    <span class="destaque-numero">{destaque_numero}</span>
-                    <span class="destaque-label">{destaque_label}</span>
-                </div>
-                <ul class="slide-bullets">{bullets_html}</ul>
-            </div>
-            """
-        elif tipo_slide == "encerramento":
-            inner = f"""
-            <div class="slide-capa slide-encerramento">
-                <div class="capa-logo">MACFOR</div>
-                <h1 class="capa-titulo">{titulo}</h1>
-                <p class="capa-subtitulo">{subtitulo}</p>
-                <div class="capa-footer">Inteligência Digital que gera resultado.</div>
-            </div>
-            """
-        else:  # lista (default)
-            bullets_html = "".join(f'<li>{b}</li>' for b in bullets)
-            inner = f"""
-            <div class="slide-content">
-                <h2>{titulo}</h2>
-                <p class="slide-headline">{headline}</p>
-                <ul class="slide-bullets">{bullets_html}</ul>
-            </div>
-            """
-
-        active = ' active' if i == 0 else ''
-        slides_html_parts.append(f'<div class="slide{active}" data-index="{i}">{inner}</div>')
-
-    all_slides = "\n".join(slides_html_parts)
-    total = len(slides_data)
-    titulo_tipo = "Apresentação para o Cliente" if tipo == "cliente" else "Apresentação Interna"
-    cor_accent = "#2E86C1" if tipo == "cliente" else "#27AE60"
-
-    html = f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Macfor | {titulo_tipo} — Syngenta</title>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
-
-  * {{ margin: 0; padding: 0; box-sizing: border-box; }}
-  body {{
-    font-family: 'Inter', -apple-system, sans-serif;
-    background: #0a0a0a;
-    color: #ffffff;
-    overflow: hidden;
-    height: 100vh;
-    width: 100vw;
-  }}
-
-  /* ===== SLIDES ===== */
-  .slide {{
-    display: none;
-    width: 100vw;
-    height: 100vh;
-    padding: 60px 80px;
-    background: linear-gradient(135deg, #0f1923 0%, #1B3A5C 50%, #0f1923 100%);
-    position: relative;
-    animation: fadeIn 0.5s ease;
-  }}
-  .slide.active {{ display: flex; flex-direction: column; justify-content: center; }}
-
-  @keyframes fadeIn {{
-    from {{ opacity: 0; transform: translateY(20px); }}
-    to {{ opacity: 1; transform: translateY(0); }}
-  }}
-
-  /* ===== CAPA ===== */
-  .slide-capa {{
-    display: flex; flex-direction: column; align-items: center;
-    justify-content: center; text-align: center; width: 100%; height: 100%;
-  }}
-  .capa-linha-top {{
-    width: 120px; height: 4px; background: {cor_accent};
-    margin-bottom: 40px; border-radius: 2px;
-  }}
-  .capa-logo {{
-    font-size: 18px; font-weight: 800; letter-spacing: 8px;
-    color: {cor_accent}; margin-bottom: 30px;
-  }}
-  .capa-titulo {{
-    font-size: 48px; font-weight: 700; line-height: 1.2;
-    max-width: 800px; margin-bottom: 16px;
-  }}
-  .capa-subtitulo {{
-    font-size: 20px; font-weight: 300; color: #8899aa; margin-bottom: 40px;
-  }}
-  .capa-footer {{
-    font-size: 14px; color: #5D6D7E; letter-spacing: 2px; text-transform: uppercase;
-  }}
-
-  /* ===== CONTEÚDO ===== */
-  .slide-content {{
-    max-width: 1000px; width: 100%;
-  }}
-  .slide-content h2 {{
-    font-size: 36px; font-weight: 700; margin-bottom: 12px;
-    border-left: 4px solid {cor_accent}; padding-left: 20px;
-  }}
-  .slide-headline {{
-    font-size: 22px; font-weight: 300; color: #a0b4c8;
-    margin-bottom: 40px; padding-left: 24px; line-height: 1.5;
-  }}
-
-  /* ===== BULLETS ===== */
-  .slide-bullets {{
-    list-style: none; padding-left: 24px;
-  }}
-  .slide-bullets li {{
-    font-size: 20px; line-height: 1.6; padding: 12px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding-left: 24px; position: relative;
-  }}
-  .slide-bullets li::before {{
-    content: ''; position: absolute; left: 0; top: 50%;
-    transform: translateY(-50%); width: 8px; height: 8px;
-    background: {cor_accent}; border-radius: 50%;
-  }}
-
-  /* ===== MÉTRICAS ===== */
-  .metricas-grid {{
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 24px; margin-top: 10px;
-  }}
-  .metrica-card {{
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px; padding: 28px 24px; text-align: center;
-    transition: transform 0.2s, border-color 0.2s;
-  }}
-  .metrica-card:hover {{
-    transform: translateY(-4px); border-color: {cor_accent};
-  }}
-  .metrica-nome {{
-    font-size: 13px; text-transform: uppercase; letter-spacing: 2px;
-    color: #8899aa; margin-bottom: 8px;
-  }}
-  .metrica-valor {{
-    font-size: 32px; font-weight: 700; margin-bottom: 4px;
-  }}
-  .metrica-var {{
-    font-size: 16px; font-weight: 600;
-  }}
-
-  /* ===== DESTAQUE ===== */
-  .destaque-box {{
-    display: flex; align-items: baseline; gap: 16px;
-    margin-bottom: 32px; padding-left: 24px;
-  }}
-  .destaque-numero {{
-    font-size: 56px; font-weight: 800; color: {cor_accent};
-  }}
-  .destaque-label {{
-    font-size: 18px; color: #8899aa; font-weight: 300;
-  }}
-
-  /* ===== ENCERRAMENTO ===== */
-  .slide-encerramento .capa-titulo {{ font-size: 42px; }}
-
-  /* ===== NAVEGAÇÃO ===== */
-  .nav-bar {{
-    position: fixed; bottom: 0; left: 0; right: 0;
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 40px;
-    background: rgba(10,10,10,0.85); backdrop-filter: blur(10px);
-    border-top: 1px solid rgba(255,255,255,0.06); z-index: 100;
-  }}
-  .nav-btn {{
-    background: none; border: 2px solid rgba(255,255,255,0.15);
-    color: #fff; padding: 10px 28px; border-radius: 8px;
-    font-size: 14px; cursor: pointer; font-family: 'Inter', sans-serif;
-    font-weight: 500; transition: all 0.2s; letter-spacing: 1px;
-  }}
-  .nav-btn:hover {{ border-color: {cor_accent}; color: {cor_accent}; }}
-  .nav-btn:disabled {{ opacity: 0.3; cursor: default; }}
-
-  .progress-bar {{
-    flex: 1; margin: 0 30px; height: 3px;
-    background: rgba(255,255,255,0.08); border-radius: 2px; position: relative;
-  }}
-  .progress-fill {{
-    height: 100%; background: {cor_accent}; border-radius: 2px;
-    transition: width 0.4s ease;
-  }}
-  .slide-counter {{
-    position: absolute; top: -24px; right: 0;
-    font-size: 12px; color: #5D6D7E; letter-spacing: 1px;
-  }}
-
-  /* ===== MARCA D'ÁGUA ===== */
-  .watermark {{
-    position: fixed; top: 20px; right: 30px; font-size: 11px;
-    color: rgba(255,255,255,0.15); letter-spacing: 3px; font-weight: 600;
-    z-index: 101;
-  }}
-</style>
-</head>
-<body>
-
-<div class="watermark">MACFOR</div>
-
-{all_slides}
-
-<div class="nav-bar">
-  <button class="nav-btn" id="btnPrev" onclick="navegar(-1)">← ANTERIOR</button>
-  <div class="progress-bar">
-    <div class="progress-fill" id="progressFill"></div>
-    <div class="slide-counter" id="slideCounter"></div>
-  </div>
-  <button class="nav-btn" id="btnNext" onclick="navegar(1)">PRÓXIMO →</button>
-</div>
-
-<script>
-  let atual = 0;
-  const total = {total};
-  const slides = document.querySelectorAll('.slide');
-
-  function mostrar(idx) {{
-    slides.forEach(s => s.classList.remove('active'));
-    slides[idx].classList.add('active');
-    document.getElementById('progressFill').style.width = ((idx + 1) / total * 100) + '%';
-    document.getElementById('slideCounter').textContent = (idx + 1) + ' / ' + total;
-    document.getElementById('btnPrev').disabled = idx === 0;
-    document.getElementById('btnNext').disabled = idx === total - 1;
-  }}
-
-  function navegar(dir) {{
-    const novo = atual + dir;
-    if (novo >= 0 && novo < total) {{ atual = novo; mostrar(atual); }}
-  }}
-
-  document.addEventListener('keydown', e => {{
-    if (e.key === 'ArrowRight' || e.key === ' ') navegar(1);
-    if (e.key === 'ArrowLeft') navegar(-1);
-    if (e.key === 'f' || e.key === 'F') {{
-      if (!document.fullscreenElement) document.documentElement.requestFullscreen();
-      else document.exitFullscreen();
-    }}
-  }});
-
-  mostrar(0);
-</script>
-</body>
-</html>"""
-
-    return html
-
-
 if st.button("🔄 Atualizar Dados (Syngenta)"):
     with st.spinner("Buscando dados históricos no BigQuery..."):
         res = fetch_bigquery_data()
@@ -2797,55 +2334,88 @@ if submitted:
         'info_concorrentes': info_concorrentes
     }
 
-    # Gerar relatório
-    with st.spinner("Gerando relatório executivo... (isso pode levar alguns minutos)"):
-        try:
-            # Gerar cada seção sequencialmente (pipeline de inteligência)
+    # Gerar relatório — cada etapa individualmente com spinner próprio
+    try:
+        progress = st.progress(0, text="Iniciando pipeline de inteligência...")
+
+        with st.spinner("1/14 — Análise YoY..."):
             analise_yoy = gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens, modelo_escolhido)
+        progress.progress(1/14, text="1/14 ✓ Análise YoY")
+
+        with st.spinner("2/14 — Análise de Concorrência..."):
             analise_concorrencia = gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, modelo_escolhido)
+        progress.progress(2/14, text="2/14 ✓ Concorrência")
+
+        with st.spinner("3/14 — Contexto Atual..."):
             contexto_atual = gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia, modelo_escolhido)
+        progress.progress(3/14, text="3/14 ✓ Contexto Atual")
+
+        with st.spinner("4/14 — Destaques..."):
             destaques = gerar_destaques(dados_metrica_performance, contexto_atual, modelo_escolhido)
+        progress.progress(4/14, text="4/14 ✓ Destaques")
+
+        with st.spinner("5/14 — Análise de Criativos..."):
             analise_criativos = gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, modelo_escolhido)
+        progress.progress(5/14, text="5/14 ✓ Criativos")
+
+        with st.spinner("6/14 — Mídias Pagas..."):
             analise_midias_pagas = gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos, modelo_escolhido)
+        progress.progress(6/14, text="6/14 ✓ Mídias Pagas")
+
+        with st.spinner("7/14 — SEO & Conteúdo..."):
             analise_seo = gerar_analise_seo(dados_seo, analise_midias_pagas, modelo_escolhido)
+        progress.progress(7/14, text="7/14 ✓ SEO")
+
+        with st.spinner("8/14 — Diagnóstico de Eficiência..."):
             diagnostico_eficiencia = gerar_diagnostico_eficiencia(dados_metrica_performance, dados_investimentos, dados_custos, modelo_escolhido)
+        progress.progress(8/14, text="8/14 ✓ Diagnóstico")
+
+        with st.spinner("9/14 — Red Flags..."):
             red_flags = gerar_red_flags(dados_metrica_performance, dados_custos, dados_investimentos, contexto_atual, modelo_escolhido)
+        progress.progress(9/14, text="9/14 ✓ Red Flags")
+
+        with st.spinner("10/14 — Mapa de Oportunidades..."):
             mapa_oportunidades = gerar_mapa_oportunidades(dados_metrica_performance, dados_investimentos, dados_custos, dados_seo, analise_seo, modelo_escolhido)
+        progress.progress(10/14, text="10/14 ✓ Oportunidades")
+
+        with st.spinner("11/14 — Próximos Passos..."):
             proximos_passos = gerar_proximos_passos(dados_metrica_performance, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, modelo_escolhido)
+        progress.progress(11/14, text="11/14 ✓ Próximos Passos")
 
-            # Compilar documentos derivados
+        with st.spinner("12/14 — Compilando relatório do cliente..."):
             relatorio_cliente = compilar_relatorio_cliente(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, proximos_passos, mapa_oportunidades, modelo_escolhido)
+        progress.progress(12/14, text="12/14 ✓ Relatório Cliente")
+
+        with st.spinner("13/14 — Guia de slides — Cliente..."):
             slides_cliente = compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, tipo="cliente", modelo_escolhido=modelo_escolhido)
+        progress.progress(13/14, text="13/14 ✓ Slides Cliente")
+
+        with st.spinner("14/14 — Guia de slides — Interno..."):
             slides_interno = compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, tipo="interno", modelo_escolhido=modelo_escolhido)
+        progress.progress(14/14, text="14/14 ✓ Pipeline completo!")
 
-            # Gerar conteúdo para slides HTML
-            conteudo_html_cliente = gerar_conteudo_slides_html(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, dados_metrica_performance, tipo="cliente", modelo_escolhido=modelo_escolhido)
-            conteudo_html_interno = gerar_conteudo_slides_html(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, dados_metrica_performance, tipo="interno", modelo_escolhido=modelo_escolhido)
+        # Armazenar resultados
+        st.session_state.relatorio_gerado = True
+        st.session_state.dados_processados = dados_metrica_performance
+        st.session_state.descricoes_imagens = descricoes_imagens
+        st.session_state.descricoes_imagens_mes_passado = descricoes_imagens_mes_passado
+        st.session_state.contexto_atual = contexto_atual
+        st.session_state.destaques = destaques
+        st.session_state.analise_criativos = analise_criativos
+        st.session_state.analise_midias_pagas = analise_midias_pagas
+        st.session_state.analise_seo = analise_seo
+        st.session_state.diagnostico_eficiencia = diagnostico_eficiencia
+        st.session_state.red_flags = red_flags
+        st.session_state.mapa_oportunidades = mapa_oportunidades
+        st.session_state.proximos_passos = proximos_passos
+        st.session_state.relatorio_cliente = relatorio_cliente
+        st.session_state.slides_cliente = slides_cliente
+        st.session_state.slides_interno = slides_interno
 
-            # Armazenar resultados
-            st.session_state.relatorio_gerado = True
-            st.session_state.dados_processados = dados_metrica_performance
-            st.session_state.descricoes_imagens = descricoes_imagens
-            st.session_state.descricoes_imagens_mes_passado = descricoes_imagens_mes_passado
-            st.session_state.contexto_atual = contexto_atual
-            st.session_state.destaques = destaques
-            st.session_state.analise_criativos = analise_criativos
-            st.session_state.analise_midias_pagas = analise_midias_pagas
-            st.session_state.analise_seo = analise_seo
-            st.session_state.diagnostico_eficiencia = diagnostico_eficiencia
-            st.session_state.red_flags = red_flags
-            st.session_state.mapa_oportunidades = mapa_oportunidades
-            st.session_state.proximos_passos = proximos_passos
-            st.session_state.relatorio_cliente = relatorio_cliente
-            st.session_state.slides_cliente = slides_cliente
-            st.session_state.slides_interno = slides_interno
-            st.session_state.conteudo_html_cliente = conteudo_html_cliente
-            st.session_state.conteudo_html_interno = conteudo_html_interno
-            
-            st.rerun() # Força o refresh para mostrar o relatório
+        st.rerun()
 
-        except Exception as e:
-            st.error(f"Erro ao gerar relatório: {str(e)}")
+    except Exception as e:
+        st.error(f"Erro ao gerar relatório: {str(e)}")
 
 # Exibir relatório
 if st.session_state.relatorio_gerado:
@@ -3233,33 +2803,6 @@ if st.session_state.relatorio_gerado:
                 file_name=f"SLIDES_CLIENTE_syngenta_{ts}.docx",
                 mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 help="Roteiro para deck de apresentação ao cliente — focado em conquistas e valor."
-            )
-
-        # --- APRESENTAÇÕES HTML/CSS ---
-        st.markdown("**Apresentações Interativas (HTML):**")
-        html_cliente = gerar_apresentacao_html(
-            st.session_state.get('conteudo_html_cliente', ''), tipo="cliente"
-        )
-        html_interno = gerar_apresentacao_html(
-            st.session_state.get('conteudo_html_interno', ''), tipo="interno"
-        )
-
-        col_h1, col_h2 = st.columns(2)
-        with col_h1:
-            st.download_button(
-                label="🖥️ Apresentação Cliente (HTML)",
-                data=html_cliente,
-                file_name=f"APRESENTACAO_CLIENTE_syngenta_{ts}.html",
-                mime="text/html",
-                help="Apresentação interativa com navegação por teclado (setas ← →). Abra no navegador. Pressione F para fullscreen."
-            )
-        with col_h2:
-            st.download_button(
-                label="🖥️ Apresentação Interna (HTML)",
-                data=html_interno,
-                file_name=f"APRESENTACAO_INTERNA_syngenta_{ts}.html",
-                mime="text/html",
-                help="Apresentação interna interativa. Abra no navegador. Setas ← → para navegar, F para fullscreen."
             )
 
     except Exception as e:
