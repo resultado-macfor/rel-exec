@@ -3,6 +3,7 @@ import pandas as pd
 import google.generativeai as genai
 import os
 import json
+import re
 from datetime import datetime
 from PIL import Image
 import base64
@@ -10,18 +11,24 @@ import io
 from google.cloud import bigquery
 from google.oauth2 import service_account
 from anthropic import Anthropic
+from docx import Document
+from docx.shared import Inches, Pt, Cm, RGBColor, Emu
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.section import WD_ORIENT
+from docx.oxml.ns import qn, nsdecls
+from docx.oxml import parse_xml
 
 # =============================================================================
 # CONFIGURAÇÃO INICIAL (DEVE SER A PRIMEIRA COISA DO SCRIPT)
 # =============================================================================
 
-st.set_page_config(layout="wide", page_title="Agente de Relatoria Executiva Macfor")
+st.set_page_config(layout="wide", page_title="Relatório Executivo - IA", page_icon="📊")
 
 
 # Inicialização do estado da sessão para evitar KeyError/AttributeError
 chaves_sessao = [
     'relatorio_gerado', 'descricoes_imagens', 'descricoes_imagens_mes_passado',
-    'descricoes_conc_atual', 'descricoes_conc_passado',
     'dados_processados', 'contexto_atual', 'destaques', 'analise_criativos',
     'analise_midias_pagas', 'analise_seo', 'proximos_passos'
 ]
@@ -30,7 +37,7 @@ for chave in chaves_sessao:
     if chave not in st.session_state:
         if chave == 'relatorio_gerado':
             st.session_state[chave] = False
-        elif chave in ['descricoes_imagens', 'descricoes_imagens_mes_passado', 'descricoes_conc_atual', 'descricoes_conc_passado', 'dados_processados']:
+        elif chave in ['descricoes_imagens', 'descricoes_imagens_mes_passado', 'dados_processados']:
             st.session_state[chave] = [] if 'descricoes' in chave else {}
         else:
             st.session_state[chave] = ""
@@ -67,7 +74,7 @@ def get_bigquery_client():
         return bigquery.Client(credentials=credentials, project=service_account_info["project_id"])
     
     except Exception as e:
-        st.error(f"Erro na conexao BigQuery: {str(e)}")
+        st.error(f"❌ Erro na conexão BigQuery: {str(e)}")
         return None
 
 client_bq = get_bigquery_client()
@@ -177,7 +184,7 @@ def fetch_bigquery_data():
             
             # --- IMPRESSÃO NO TERMINAL (LOG) ---
             print("\n" + "="*60)
-            print(f"DADOS RECUPERADOS DO BIGQUERY - {datetime.now().strftime('%H:%M:%S')}")
+            print(f"📊 DADOS RECUPERADOS DO BIGQUERY - {datetime.now().strftime('%H:%M:%S')}")
             print("="*60)
             for chave, valor in dados_dict.items():
                 # Formata a exibição: se for número, limita casas decimais
@@ -215,15 +222,569 @@ elif os.getenv("ANTH_KEY"):
 
 cliente_anthropic = Anthropic(api_key=anthropic_api_key) if anthropic_api_key else None
 
-def gerar_texto(prompt):
-    """Gera texto usando Anthropic Claude."""
-    response = cliente_anthropic.messages.create(
-        model="claude-sonnet-4-20250514",
-        max_tokens=8096,
-        system="Voce e um agente de relatoria executiva. NUNCA use emojis em nenhuma parte da resposta. Mantenha tom profissional e analitico.",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.content[0].text
+def gerar_texto(prompt, modelo_escolhido="Gemini"):
+    """Roteia a geração de texto para o modelo escolhido pelo usuário."""
+    if modelo_escolhido == "Claude (Anthropic)" and cliente_anthropic:
+        response = cliente_anthropic.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8096,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        return response.content[0].text
+    else:
+        response = modelo_gemini.generate_content(prompt)
+        return response.text
+
+# =============================================================================
+# GERAÇÃO DO RELATÓRIO EM DOCX
+# =============================================================================
+
+MACFOR_AZUL = RGBColor(0x1B, 0x3A, 0x5C)       # Azul escuro corporativo
+MACFOR_AZUL_CLARO = RGBColor(0x2E, 0x86, 0xC1)  # Azul para destaques
+MACFOR_CINZA = RGBColor(0x5D, 0x6D, 0x7E)       # Cinza para texto secundário
+MACFOR_VERDE = RGBColor(0x27, 0xAE, 0x60)       # Verde para positivo
+MACFOR_BRANCO = RGBColor(0xFF, 0xFF, 0xFF)
+COR_FUNDO_HEADER_TAB = "1B3A5C"
+COR_FUNDO_LINHA_ALT = "EBF5FB"
+
+
+def _configurar_estilos(doc):
+    """Configura os estilos globais do documento."""
+    style = doc.styles['Normal']
+    style.font.name = 'Calibri'
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0x2C, 0x3E, 0x50)
+    style.paragraph_format.space_after = Pt(6)
+    style.paragraph_format.line_spacing = 1.15
+
+    for level, (size, color, bold) in enumerate([
+        (Pt(22), MACFOR_AZUL, True),
+        (Pt(16), MACFOR_AZUL, True),
+        (Pt(13), MACFOR_AZUL_CLARO, True),
+    ], start=1):
+        h = doc.styles[f'Heading {level}']
+        h.font.name = 'Calibri'
+        h.font.size = size
+        h.font.color.rgb = color
+        h.font.bold = bold
+        h.paragraph_format.space_before = Pt(18 if level == 1 else 14)
+        h.paragraph_format.space_after = Pt(8)
+
+
+def _adicionar_header_footer(doc, mes_ref):
+    """Adiciona header e footer profissionais a todas as seções."""
+    for section in doc.sections:
+        section.top_margin = Cm(2.5)
+        section.bottom_margin = Cm(2)
+        section.left_margin = Cm(2.5)
+        section.right_margin = Cm(2.5)
+        section.header_distance = Cm(1)
+        section.footer_distance = Cm(1)
+
+        # --- HEADER ---
+        header = section.header
+        header.is_linked_to_previous = False
+        htable = header.add_table(rows=1, cols=2, width=Inches(6.5))
+        htable.alignment = WD_TABLE_ALIGNMENT.CENTER
+
+        # Remove bordas da tabela do header
+        for cell in htable.row_cells(0):
+            tc = cell._tc
+            tcPr = tc.get_or_add_tcPr()
+            tcBorders = parse_xml(f'<w:tcBorders {nsdecls("w")}>'
+                                  '<w:top w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                                  '<w:left w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                                  '<w:bottom w:val="single" w:sz="8" w:space="0" w:color="1B3A5C"/>'
+                                  '<w:right w:val="none" w:sz="0" w:space="0" w:color="auto"/>'
+                                  '</w:tcBorders>')
+            tcPr.append(tcBorders)
+
+        left_cell = htable.cell(0, 0)
+        p = left_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        run = p.add_run("MACFOR")
+        run.font.size = Pt(9)
+        run.font.bold = True
+        run.font.color.rgb = MACFOR_AZUL
+        run = p.add_run("  |  Relatório Executivo")
+        run.font.size = Pt(9)
+        run.font.color.rgb = MACFOR_CINZA
+
+        right_cell = htable.cell(0, 1)
+        p = right_cell.paragraphs[0]
+        p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+        run = p.add_run(f"Syngenta  |  {mes_ref}")
+        run.font.size = Pt(9)
+        run.font.color.rgb = MACFOR_CINZA
+
+        # Remove parágrafo padrão vazio do header
+        if header.paragraphs and header.paragraphs[0].text == '':
+            header.paragraphs[0]._element.getparent().remove(header.paragraphs[0]._element)
+
+        # --- FOOTER ---
+        footer = section.footer
+        footer.is_linked_to_previous = False
+        p = footer.paragraphs[0] if footer.paragraphs else footer.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+        # Linha separadora acima do footer
+        pPr = p._p.get_or_add_pPr()
+        pBdr = parse_xml(f'<w:pBdr {nsdecls("w")}>'
+                         '<w:top w:val="single" w:sz="4" w:space="4" w:color="1B3A5C"/>'
+                         '</w:pBdr>')
+        pPr.append(pBdr)
+
+        run = p.add_run("Confidencial  |  Macfor Inteligência Digital  |  Página ")
+        run.font.size = Pt(8)
+        run.font.color.rgb = MACFOR_CINZA
+
+        # Campo de número de página
+        fld_char_begin = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="begin"/>')
+        fld_char_sep = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="separate"/>')
+        fld_char_end = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="end"/>')
+        instr_text = parse_xml(f'<w:instrText {nsdecls("w")} xml:space="preserve"> PAGE </w:instrText>')
+
+        run_pg = p.add_run()
+        run_pg.font.size = Pt(8)
+        run_pg.font.color.rgb = MACFOR_CINZA
+        run_pg._r.append(fld_char_begin)
+        run_pg._r.append(instr_text)
+        run_pg._r.append(fld_char_sep)
+        run_pg._r.append(fld_char_end)
+
+
+def _adicionar_capa(doc, mes_ref):
+    """Cria uma capa elegante e minimalista."""
+    # Espaçamento superior
+    for _ in range(6):
+        doc.add_paragraph()
+
+    # Linha decorativa superior
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("_" * 60)
+    run.font.color.rgb = MACFOR_AZUL_CLARO
+    run.font.size = Pt(10)
+
+    # Título principal
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(24)
+    run = p.add_run("RELATÓRIO EXECUTIVO")
+    run.font.size = Pt(32)
+    run.font.bold = True
+    run.font.color.rgb = MACFOR_AZUL
+    run.font.name = 'Calibri'
+
+    # Subtítulo
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(4)
+    run = p.add_run("Inteligência de Mercado & Performance Digital")
+    run.font.size = Pt(14)
+    run.font.color.rgb = MACFOR_CINZA
+    run.font.name = 'Calibri'
+
+    # Linha decorativa inferior
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(8)
+    run = p.add_run("_" * 60)
+    run.font.color.rgb = MACFOR_AZUL_CLARO
+    run.font.size = Pt(10)
+
+    # Espaçamento
+    for _ in range(3):
+        doc.add_paragraph()
+
+    # Bloco Cliente / Agência
+    dados_capa = [
+        ("CLIENTE", "Syngenta"),
+        ("AGÊNCIA", "Macfor Inteligência Digital"),
+        ("PERÍODO", mes_ref),
+        ("DATA DE EMISSÃO", datetime.now().strftime("%d de %B de %Y").replace(
+            "January", "Janeiro").replace("February", "Fevereiro").replace(
+            "March", "Março").replace("April", "Abril").replace(
+            "May", "Maio").replace("June", "Junho").replace(
+            "July", "Julho").replace("August", "Agosto").replace(
+            "September", "Setembro").replace("October", "Outubro").replace(
+            "November", "Novembro").replace("December", "Dezembro")),
+    ]
+    for label, valor in dados_capa:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        run = p.add_run(f"{label}: ")
+        run.font.size = Pt(10)
+        run.font.bold = True
+        run.font.color.rgb = MACFOR_AZUL
+        run = p.add_run(valor)
+        run.font.size = Pt(10)
+        run.font.color.rgb = MACFOR_CINZA
+
+    # Quebra de página após a capa
+    doc.add_page_break()
+
+
+def _adicionar_sumario(doc):
+    """Adiciona sumário (Table of Contents) via campo do Word."""
+    p = doc.add_heading("Sumário", level=1)
+
+    # Instrução de campo TOC
+    paragraph = doc.add_paragraph()
+    run = paragraph.add_run()
+    fld_char_begin = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="begin"/>')
+    instr_text = parse_xml(f'<w:instrText {nsdecls("w")} xml:space="preserve"> TOC \\o "1-3" \\h \\z \\u </w:instrText>')
+    fld_char_sep = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="separate"/>')
+    fld_char_end = parse_xml(f'<w:fldChar {nsdecls("w")} w:fldCharType="end"/>')
+
+    run._r.append(fld_char_begin)
+    run._r.append(instr_text)
+    run._r.append(fld_char_sep)
+
+    # Texto placeholder
+    run_placeholder = paragraph.add_run("[Atualize o sumário no Word: clique com botão direito > Atualizar campo]")
+    run_placeholder.font.color.rgb = MACFOR_CINZA
+    run_placeholder.font.size = Pt(9)
+    run_placeholder.font.italic = True
+
+    run2 = paragraph.add_run()
+    run2._r.append(fld_char_end)
+
+    doc.add_page_break()
+
+
+def _adicionar_tabela_metricas(doc, titulo, dados_linhas):
+    """Adiciona uma tabela de métricas elegante.
+
+    dados_linhas: list de tuples (metrica, atual, variacao_mes, variacao_ano)
+    """
+    doc.add_heading(titulo, level=2)
+
+    table = doc.add_table(rows=1, cols=4)
+    table.alignment = WD_TABLE_ALIGNMENT.CENTER
+    table.style = 'Table Grid'
+
+    # Cabeçalho
+    headers = ["Métrica", "Valor Atual", "Var. MoM", "Var. YoY"]
+    for i, header_text in enumerate(headers):
+        cell = table.rows[0].cells[i]
+        cell.text = ""
+        p = cell.paragraphs[0]
+        run = p.add_run(header_text)
+        run.font.bold = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = MACFOR_BRANCO
+        run.font.name = 'Calibri'
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{COR_FUNDO_HEADER_TAB}"/>')
+        cell._tc.get_or_add_tcPr().append(shading)
+
+    # Linhas de dados
+    for idx, (metrica, valor, var_mes, var_ano) in enumerate(dados_linhas):
+        row = table.add_row()
+        valores = [metrica, valor, var_mes, var_ano]
+        for i, val in enumerate(valores):
+            cell = row.cells[i]
+            cell.text = ""
+            p = cell.paragraphs[0]
+            run = p.add_run(str(val))
+            run.font.size = Pt(9)
+            run.font.name = 'Calibri'
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER if i > 0 else WD_ALIGN_PARAGRAPH.LEFT
+
+            # Colorir variações
+            if i >= 2 and isinstance(val, str):
+                if val.startswith('+'):
+                    run.font.color.rgb = MACFOR_VERDE
+                elif val.startswith('-'):
+                    run.font.color.rgb = RGBColor(0xE7, 0x4C, 0x3C)
+
+            # Fundo alternado
+            if idx % 2 == 0:
+                shading = parse_xml(f'<w:shd {nsdecls("w")} w:fill="{COR_FUNDO_LINHA_ALT}"/>')
+                cell._tc.get_or_add_tcPr().append(shading)
+
+    # Larguras das colunas
+    for row in table.rows:
+        row.cells[0].width = Cm(5.5)
+        row.cells[1].width = Cm(3.5)
+        row.cells[2].width = Cm(3)
+        row.cells[3].width = Cm(3)
+
+    doc.add_paragraph()  # Espaçamento
+
+
+def _formatar_variacao(valor):
+    """Formata variação com sinal."""
+    if valor > 0:
+        return f"+{valor:.1f}%"
+    elif valor < 0:
+        return f"{valor:.1f}%"
+    return "0.0%"
+
+
+def _formatar_numero(valor, prefixo="", sufixo=""):
+    """Formata número com separador de milhar."""
+    if isinstance(valor, float):
+        if abs(valor) < 100:
+            return f"{prefixo}{valor:,.2f}{sufixo}"
+        return f"{prefixo}{valor:,.0f}{sufixo}"
+    return f"{prefixo}{valor:,}{sufixo}"
+
+
+def _markdown_para_docx(doc, texto_md, nivel_base=2):
+    """Converte texto Markdown simplificado em parágrafos do docx."""
+    if not texto_md:
+        return
+
+    linhas = texto_md.split('\n')
+    for linha in linhas:
+        linha_strip = linha.strip()
+        if not linha_strip:
+            continue
+
+        # Headings
+        if linha_strip.startswith('### '):
+            doc.add_heading(linha_strip[4:].strip().strip('*'), level=min(nivel_base + 1, 3))
+        elif linha_strip.startswith('## '):
+            doc.add_heading(linha_strip[3:].strip().strip('*'), level=nivel_base)
+        elif linha_strip.startswith('# '):
+            doc.add_heading(linha_strip[2:].strip().strip('*'), level=max(nivel_base - 1, 1))
+        elif linha_strip.startswith('---'):
+            # Linha horizontal — adiciona espaçamento sutil
+            p = doc.add_paragraph()
+            p.paragraph_format.space_before = Pt(4)
+            p.paragraph_format.space_after = Pt(4)
+        elif linha_strip.startswith(('- ', '* ', '• ')):
+            # Lista com bullet
+            texto_item = linha_strip.lstrip('-*• ').strip()
+            p = doc.add_paragraph(style='List Bullet')
+            _aplicar_formatacao_inline(p, texto_item)
+        elif re.match(r'^\d+[\.\)] ', linha_strip):
+            # Lista numerada
+            texto_item = re.sub(r'^\d+[\.\)] ', '', linha_strip).strip()
+            p = doc.add_paragraph(style='List Number')
+            _aplicar_formatacao_inline(p, texto_item)
+        else:
+            p = doc.add_paragraph()
+            _aplicar_formatacao_inline(p, linha_strip)
+
+
+def _aplicar_formatacao_inline(paragraph, texto):
+    """Aplica bold e italic inline no texto."""
+    # Limpa o texto padrão do parágrafo
+    paragraph.clear()
+
+    # Regex para **bold** e *italic*
+    partes = re.split(r'(\*\*.*?\*\*|\*.*?\*)', texto)
+    for parte in partes:
+        if parte.startswith('**') and parte.endswith('**'):
+            run = paragraph.add_run(parte[2:-2])
+            run.bold = True
+        elif parte.startswith('*') and parte.endswith('*'):
+            run = paragraph.add_run(parte[1:-1])
+            run.italic = True
+        else:
+            paragraph.add_run(parte)
+
+
+def gerar_docx_relatorio(dados, dados_investimentos, dados_custos, dados_seo,
+                          contexto_atual, destaques, analise_criativos,
+                          analise_midias_pagas, analise_seo, proximos_passos,
+                          descricoes_imagens, descricoes_imagens_mes_passado):
+    """Gera o relatório executivo completo em DOCX."""
+
+    doc = Document()
+    mes_ref = datetime.now().strftime("%B/%Y").replace(
+        "January", "Janeiro").replace("February", "Fevereiro").replace(
+        "March", "Março").replace("April", "Abril").replace(
+        "May", "Maio").replace("June", "Junho").replace(
+        "July", "Julho").replace("August", "Agosto").replace(
+        "September", "Setembro").replace("October", "Outubro").replace(
+        "November", "Novembro").replace("December", "Dezembro")
+
+    _configurar_estilos(doc)
+    _adicionar_capa(doc, mes_ref)
+    _adicionar_header_footer(doc, mes_ref)
+    _adicionar_sumario(doc)
+
+    # =================================================================
+    # 1. COMPARATIVOS DE PERFORMANCE
+    # =================================================================
+    doc.add_heading("Comparativos de Performance", level=1)
+
+    p = doc.add_paragraph()
+    run = p.add_run("Visão consolidada dos principais indicadores de performance digital, "
+                     "com variações mês a mês (MoM) e ano a ano (YoY).")
+    run.font.italic = True
+    run.font.color.rgb = MACFOR_CINZA
+
+    metricas_perf = [
+        ("Investimento", _formatar_numero(dados.get('spend_atual', 0), "R$ "),
+         _formatar_variacao(dados.get('var_invest_mes', 0)),
+         _formatar_variacao(dados.get('var_invest_ano', 0))),
+        ("Sessões", _formatar_numero(dados.get('sess_atual', 0)),
+         _formatar_variacao(dados.get('var_sess_mes', 0)),
+         _formatar_variacao(dados.get('var_sess_ano', 0))),
+        ("Alcance (Reach)", _formatar_numero(dados.get('reach_atual', 0)),
+         _formatar_variacao(dados.get('var_reach_mes', 0)),
+         _formatar_variacao(dados.get('var_reach_ano', 0))),
+        ("Video Thruplays", _formatar_numero(dados.get('vtp_atual', 0)),
+         _formatar_variacao(dados.get('var_vtp_mes', 0)),
+         _formatar_variacao(dados.get('var_vtp_ano', 0))),
+        ("Impressões", _formatar_numero(dados.get('imp_atual', 0)),
+         _formatar_variacao(dados.get('var_imp_mes', 0)),
+         _formatar_variacao(dados.get('var_imp_ano', 0))),
+        ("Cliques", _formatar_numero(dados.get('cli_atual', 0)),
+         _formatar_variacao(dados.get('var_cli_mes', 0)),
+         _formatar_variacao(dados.get('var_cli_ano', 0))),
+        ("Engajamentos", _formatar_numero(dados.get('eng_atual', 0)),
+         _formatar_variacao(dados.get('var_eng_mes', 0)),
+         _formatar_variacao(dados.get('var_eng_ano', 0))),
+        ("CTR", _formatar_numero(dados.get('ctr_atual', 0), sufixo="%"),
+         _formatar_variacao(dados.get('var_ctr_mes', 0)),
+         _formatar_variacao(dados.get('var_ctr_ano', 0))),
+    ]
+
+    _adicionar_tabela_metricas(doc, "Indicadores Gerais", metricas_perf)
+
+    # Tabela de Investimentos por canal
+    inv_linhas = [
+        ("Facebook", _formatar_numero(dados_investimentos.get('fb_atual', 0), "R$ "),
+         _formatar_variacao(dados_investimentos.get('var_fb_mes', 0)),
+         _formatar_variacao(dados_investimentos.get('var_fb_ano', 0))),
+        ("Instagram", _formatar_numero(dados_investimentos.get('ig_atual', 0), "R$ "),
+         _formatar_variacao(dados_investimentos.get('var_ig_mes', 0)),
+         _formatar_variacao(dados_investimentos.get('var_ig_ano', 0))),
+        ("TikTok", _formatar_numero(dados_investimentos.get('tt_atual', 0), "R$ "),
+         _formatar_variacao(dados_investimentos.get('var_tt_mes', 0)),
+         _formatar_variacao(dados_investimentos.get('var_tt_ano', 0))),
+        ("Google Ads", _formatar_numero(dados_investimentos.get('google_atual', 0), "R$ "),
+         _formatar_variacao(dados_investimentos.get('var_google_mes', 0)),
+         _formatar_variacao(dados_investimentos.get('var_google_ano', 0))),
+        ("Total", _formatar_numero(dados_investimentos.get('total_atual', 0), "R$ "),
+         _formatar_variacao(dados_investimentos.get('var_total_mes', 0)),
+         _formatar_variacao(dados_investimentos.get('var_total_ano', 0))),
+    ]
+
+    _adicionar_tabela_metricas(doc, "Investimentos por Canal", inv_linhas)
+
+    # Tabela de Custos
+    custos_linhas = [
+        ("CPC", _formatar_numero(dados_custos.get('cpc_atual', 0), "R$ "),
+         _formatar_variacao(dados_custos.get('var_cpc_mes', 0)),
+         _formatar_variacao(dados_custos.get('var_cpc_ano', 0))),
+        ("CPM", _formatar_numero(dados_custos.get('cpm_atual', 0), "R$ "),
+         _formatar_variacao(dados_custos.get('var_cpm_mes', 0)),
+         _formatar_variacao(dados_custos.get('var_cpm_ano', 0))),
+        ("CPE", _formatar_numero(dados_custos.get('cpe_atual', 0), "R$ "),
+         _formatar_variacao(dados_custos.get('var_cpe_mes', 0)),
+         _formatar_variacao(dados_custos.get('var_cpe_ano', 0))),
+        ("CPV", _formatar_numero(dados_custos.get('cpv_atual', 0), "R$ "),
+         _formatar_variacao(dados_custos.get('var_cpv_mes', 0)),
+         _formatar_variacao(dados_custos.get('var_cpv_ano', 0))),
+    ]
+
+    _adicionar_tabela_metricas(doc, "Indicadores de Custo e Eficiência", custos_linhas)
+
+    doc.add_page_break()
+
+    # =================================================================
+    # 2. CONTEXTO ATUAL
+    # =================================================================
+    doc.add_heading("Contexto Atual", level=1)
+    _markdown_para_docx(doc, contexto_atual)
+    doc.add_page_break()
+
+    # =================================================================
+    # 3. DESTAQUES
+    # =================================================================
+    doc.add_heading("Destaques do Período", level=1)
+    _markdown_para_docx(doc, destaques)
+    doc.add_page_break()
+
+    # =================================================================
+    # 4. ANÁLISE DE CRIATIVOS
+    # =================================================================
+    doc.add_heading("Análise de Criativos", level=1)
+
+    if descricoes_imagens:
+        doc.add_heading("Criativos do Mês Atual", level=2)
+        for desc in descricoes_imagens:
+            _markdown_para_docx(doc, desc)
+
+    if descricoes_imagens_mes_passado:
+        doc.add_heading("Criativos do Mês Passado", level=2)
+        for desc in descricoes_imagens_mes_passado:
+            _markdown_para_docx(doc, desc)
+
+    doc.add_heading("Inteligência Criativa", level=2)
+    _markdown_para_docx(doc, analise_criativos)
+    doc.add_page_break()
+
+    # =================================================================
+    # 5. MÍDIAS PAGAS
+    # =================================================================
+    doc.add_heading("Mídias Pagas", level=1)
+    _markdown_para_docx(doc, analise_midias_pagas)
+    doc.add_page_break()
+
+    # =================================================================
+    # 6. SEO + CONTENT
+    # =================================================================
+    doc.add_heading("SEO + Content", level=1)
+
+    seo_linhas = [
+        ("Visualizações (Total)", _formatar_numero(dados_seo.get('vis_total_atual', 0)),
+         _formatar_variacao(dados_seo.get('var_vis_total_mes', 0)),
+         _formatar_variacao(dados_seo.get('var_vis_total_ano', 0))),
+        ("Sessões Orgânicas", _formatar_numero(dados_seo.get('sess_org_atual', 0)),
+         _formatar_variacao(dados_seo.get('var_sess_org_mes', 0)),
+         _formatar_variacao(dados_seo.get('var_sess_org_ano', 0))),
+        ("Visualizações Orgânicas", _formatar_numero(dados_seo.get('vis_org_atual', 0)),
+         _formatar_variacao(dados_seo.get('var_vis_org_mes', 0)),
+         _formatar_variacao(dados_seo.get('var_vis_org_ano', 0))),
+    ]
+    _adicionar_tabela_metricas(doc, "Indicadores Orgânicos", seo_linhas)
+
+    _markdown_para_docx(doc, analise_seo)
+    doc.add_page_break()
+
+    # =================================================================
+    # 7. PRÓXIMOS PASSOS
+    # =================================================================
+    doc.add_heading("Próximos Passos e Aprendizados", level=1)
+    _markdown_para_docx(doc, proximos_passos)
+
+    # =================================================================
+    # RODAPÉ FINAL
+    # =================================================================
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("_" * 50)
+    run.font.color.rgb = MACFOR_AZUL_CLARO
+    run.font.size = Pt(8)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run(f"Relatório gerado por IA em {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+    run.font.size = Pt(8)
+    run.font.italic = True
+    run.font.color.rgb = MACFOR_CINZA
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("Macfor Inteligência Digital | macfor.com.br")
+    run.font.size = Pt(8)
+    run.font.color.rgb = MACFOR_AZUL
+
+    # Salvar em buffer
+    buffer = io.BytesIO()
+    doc.save(buffer)
+    buffer.seek(0)
+    return buffer
+
 
 # Estado da sessão para os cliques (Sincroniza com o BigQuery)
 if 'bq_cliques' not in st.session_state:
@@ -232,11 +793,33 @@ if 'bq_cliques' not in st.session_state:
 if 'relatorio_gerado' not in st.session_state:
     st.session_state.relatorio_gerado = False
 
-# Titulo do aplicativo
-st.title("Agente de Relatoria Executiva Macfor")
-st.markdown("*Dados brutos entram, inteligencia de mercado sai. Devolutiva estrategica automatizada.*")
+# Título do aplicativo
+st.title("📊 Relatório Executivo - Inteligência de Negócio")
+st.markdown("*Transformando dados brutos em inteligência de mercado para seu cliente*")
 st.markdown("---")
 
+# Seletor de modelo de IA para geração de texto
+col_modelo1, col_modelo2 = st.columns([1, 3])
+with col_modelo1:
+    modelos_disponiveis = ["Gemini"]
+    if cliente_anthropic:
+        modelos_disponiveis.append("Claude (Anthropic)")
+    modelo_escolhido = st.selectbox("Motor de IA para texto:", modelos_disponiveis)
+with col_modelo2:
+    if modelo_escolhido == "Claude (Anthropic)":
+        st.info("Claude gera o texto analítico. Gemini continua descrevendo as imagens.")
+    else:
+        st.info("Gemini gera texto e descreve imagens.")
+
+# Estado da sessão
+if 'relatorio_gerado' not in st.session_state:
+    st.session_state.relatorio_gerado = False
+if 'descricoes_imagens' not in st.session_state:
+    st.session_state.descricoes_imagens = []
+if 'descricoes_imagens_mes_passado' not in st.session_state:
+    st.session_state.descricoes_imagens_mes_passado = []
+if 'dados_processados' not in st.session_state:
+    st.session_state.dados_processados = {}
 
 # Função para descrever imagem (sempre usa Gemini - visão)
 def descrever_imagem(imagem):
@@ -268,7 +851,7 @@ def calcular_variacao(atual, anterior):
 #COLOCAR O CRESCIMENTO EM CADA PLATAFORMA E POST DESTAQUE
 #COLOCAR SNETIMENTO DO PUBLICO E PRINCIPAIS TÓPICOS
 
-def gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens):
+def gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um analista de inteligência de mercado sênior, responsável por extrair insights de negócio a partir de dados de performance digital.
     Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
@@ -295,9 +878,9 @@ def gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens):
     - Relacione as variações com possíveis movimentos de mercado (sazonalidade, concorrência, comportamento do consumidor).
     Considere também as descrições dos criativos: {chr(10).join(descricoes_imagens)}
     """
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, descricoes_conc_atual=None, descricoes_conc_passado=None):
+def gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um estrategista de inteligência competitiva. Este documento é uma devolutiva para o cliente que contratou nosso serviço de marketing digital.
     Sua missão é extrair inteligência de mercado que ajude o cliente a entender seu posicionamento competitivo e tomar decisões estratégicas de negócio.
@@ -309,16 +892,10 @@ def gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, des
     - CTR: {dados_metrica_performance.get('ctr_atual', 0):.2f}%
     - Cliques: {dados_metrica_performance.get('cliques_atual', 0)}
 
-    **Informacoes sobre a Concorrencia (Reportado pelo usuario):**
-    {info_concorrentes if info_concorrentes else "Nenhuma informacao especifica fornecida sobre os movimentos dos concorrentes."}
+    **Informações sobre a Concorrência (Reportado pelo usuário):**
+    {info_concorrentes if info_concorrentes else "Nenhuma informação específica fornecida sobre os movimentos dos concorrentes."}
 
-    **Criativos dos Concorrentes (Mes Atual):**
-    {chr(10).join(descricoes_conc_atual) if descricoes_conc_atual else "Nenhum criativo de concorrente fornecido para o mes atual."}
-
-    **Criativos dos Concorrentes (Mes Passado):**
-    {chr(10).join(descricoes_conc_passado) if descricoes_conc_passado else "Nenhum criativo de concorrente fornecido para o mes passado."}
-
-    **DIRETRIZES DE INTELIGENCIA COMPETITIVA:**
+    **DIRETRIZES DE INTELIGÊNCIA COMPETITIVA:**
     1. Traduza os dados em posicionamento de mercado: onde o cliente está forte e onde há vulnerabilidades.
     2. Identifique oportunidades de diferenciação estratégica (ex: se o concorrente foca em preço, demonstre como a estratégia de autoridade/qualidade gera vantagem competitiva sustentável).
     3. Aponte movimentos de mercado que representem ameaças ou janelas de oportunidade para o negócio do cliente.
@@ -327,9 +904,9 @@ def gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, des
     Seja analítico, profissional e focado em gerar inteligência de negócio para o cliente.
     CASO NÃO TENHA INFORMAÇÃO, NÃO INVENTE, APENAS DIGA QUE NÃO HÁ DADOS SUFICIENTES PARA ANALISAR A CONCORRÊNCIA.
     """
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia):
+def gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um Diretor de Estratégia e Inteligência de Mercado. Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
     Seu objetivo é extrair inteligência de negócio dos dados brutos, transformando números em visão estratégica que demonstre ao cliente o valor gerado pela operação de marketing digital.
@@ -377,7 +954,7 @@ def gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_c
     Em situações onde houver uma redução significativa de Investimento (YoY ou MoM) acompanhada pela manutenção ou crescimento de métricas de engajamento (Cliques ou CTR), você deve sugerir a criação de um "Gráfico de Efeito Tesoura"
     """
 
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
 
 
@@ -386,7 +963,7 @@ def gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_c
 #COLOCAR AS CAMPANHAS QUE TIVERAM MELHOR DESEMPENHO NO BANCO
 #IDENTIFICAR OS PRODUROS QUE TIVERAM MELHOR DESEMPENHO NO BANCO
 #EFICACIA DE INVESTIMENTO EM CADA CULTURA OU PRODUTO
-def gerar_destaques(dados_metrica_performance, contexto_atual):
+def gerar_destaques(dados_metrica_performance, contexto_atual, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um especialista em inteligência de negócio aplicada a marketing digital. Este documento é uma devolutiva para o cliente que contratou nosso serviço.
     Com base no contexto e nos dados de desempenho, extraia 3-5 DESTAQUES que representem as principais descobertas de inteligência de mercado do período.
@@ -420,9 +997,9 @@ def gerar_destaques(dados_metrica_performance, contexto_atual):
 
 """
 
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, descricoes_conc_atual=None, descricoes_conc_passado=None):
+def gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um especialista em inteligência criativa para marketing digital. Este documento é uma devolutiva para o cliente que contratou nosso serviço.
     Com base nos DESTAQUES e nas descrições dos criativos, extraia inteligência de negócio sobre a performance dos CRIATIVOS.
@@ -437,14 +1014,8 @@ def gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens
     **Descrições dos Criativos (Mês Passado):**
     {chr(10).join(descricoes_imagens_mes_passado) if descricoes_imagens_mes_passado else "Nenhuma imagem do mês passado fornecida"}
 
-    **Criativos dos Concorrentes (Mes Atual):**
-    {chr(10).join(descricoes_conc_atual) if descricoes_conc_atual else "Nenhum criativo de concorrente fornecido para o mes atual."}
-
-    **Criativos dos Concorrentes (Mes Passado):**
-    {chr(10).join(descricoes_conc_passado) if descricoes_conc_passado else "Nenhum criativo de concorrente fornecido para o mes passado."}
-
-    **INSTRUCAO DE COMPARACAO CRIATIVA:**
-    Se houver criativos do mes atual E do mes passado, compare a evolucao da estrategia criativa.
+    **INSTRUÇÃO DE COMPARAÇÃO CRIATIVA:**
+    Se houver criativos do mês atual E do mês passado, compare a evolução da estratégia criativa.
     Identifique: mudanças de abordagem, elementos que foram mantidos (e por quê funcionam), e o que a transição criativa revela sobre o aprendizado da campanha.
     Correlacione as mudanças criativas com as variações de performance (cliques, engajamento, CTR) para demonstrar causa e efeito ao cliente.
 
@@ -533,13 +1104,13 @@ Se faltarem dados de criativos, indicar placeholder:
     """
 
     
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
 #MIDIAS PAGAS 
 #USAR O GOOGLE TRENDS PARA Volume de buscas
 #COLOCAR REGIONALIZAÇÃR
 
-def gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos):
+def gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um Diretor de Mídia e Inteligência de Mercado focado em performance e branding para o setor agro.
     Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
@@ -613,9 +1184,9 @@ def gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criati
     Se dados ou exemplos de criativos não estiverem disponíveis, indique com placeholder.
     """
     
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_analise_seo(dados_seo, analise_midias_pagas):
+def gerar_analise_seo(dados_seo, analise_midias_pagas, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um especialista em inteligência de conteúdo e SEO. Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
     Com base na análise de mídias pagas e nos dados de SEO abaixo, extraia inteligência de mercado sobre o posicionamento orgânico do cliente.
@@ -650,9 +1221,9 @@ def gerar_analise_seo(dados_seo, analise_midias_pagas):
     **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
     Com base na inteligência extraída acima, defina o que **DEVE constar em cada slide da apresentação ao cliente**, priorizando insights de valor para o negócio.
     """
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_proximos_passos(dados_metrica_performance, analise_seo):
+def gerar_proximos_passos(dados_metrica_performance, analise_seo, modelo_escolhido="Gemini"):
     prompt = f"""
     Você é um consultor estratégico de inteligência de negócio. Este documento é uma devolutiva para o cliente que contratou nosso serviço de marketing digital.
     Com base em toda a inteligência acumulada nas seções anteriores, sintetize os PRÓXIMOS PASSOS E APRENDIZADOS.
@@ -691,9 +1262,9 @@ def gerar_proximos_passos(dados_metrica_performance, analise_seo):
     Com base na inteligência extraída acima, defina o que **DEVE constar em cada slide da apresentação ao cliente**, priorizando recomendações de alto valor estratégico para o negócio.
 
     """
-    return gerar_texto(prompt)
+    return gerar_texto(prompt, modelo_escolhido)
     
-if st.button("Atualizar Dados (Syngenta)"):
+if st.button("🔄 Atualizar Dados (Syngenta)"):
     with st.spinner("Buscando dados históricos no BigQuery..."):
         res = fetch_bigquery_data()
     
@@ -769,32 +1340,24 @@ if st.button("Atualizar Dados (Syngenta)"):
 
 # Formulário principal
 with st.form("relatorio_form"):
-    st.header("Dados do Relatorio")
-
+    st.header("📝 Dados do Relatório")
+    
     # Contexto e Destaques
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("Contexto Geral")
-        contexto_input = st.text_area("Contexto Atual (opcional)", height=100, placeholder="Descreva o contexto da campanha/periodo...")
-        info_concorrentes = st.text_area("Informacoes de Concorrentes", height=100, placeholder="O que os concorrentes estao fazendo?")
-
+        contexto_input = st.text_area("Contexto Atual (opcional)", height=100, placeholder="Descreva o contexto da campanha/período...")
+        info_concorrentes = st.text_area("Informações de Concorrentes", height=100, placeholder="O que os concorrentes estão fazendo?")
+    
     with col2:
-        st.subheader("Upload de Criativos da Marca")
-        st.markdown("**Criativos do Mes Atual**")
-        imagens = st.file_uploader("Upload dos criativos atuais", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_atual")
-        st.markdown("**Criativos do Mes Passado** *(para comparacao)*")
-        imagens_mes_passado = st.file_uploader("Upload dos criativos do mes passado", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_mes_passado")
-
-    col3, col4 = st.columns(2)
-    with col3:
-        st.subheader("Criativos da Concorrencia")
-        st.markdown("**Concorrencia -- Mes Atual**")
-        imagens_conc_atual = st.file_uploader("Upload dos criativos de concorrentes (atual)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_conc_atual")
-        st.markdown("**Concorrencia -- Mes Passado**")
-        imagens_conc_passado = st.file_uploader("Upload dos criativos de concorrentes (mes passado)", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_conc_passado")
+        st.subheader("Upload de Criativos")
+        st.markdown("**Criativos do Mês Atual**")
+        imagens = st.file_uploader("Faça upload dos criativos atuais", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_atual")
+        st.markdown("**Criativos do Mês Passado** *(para comparação)*")
+        imagens_mes_passado = st.file_uploader("Faça upload dos criativos do mês passado", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_mes_passado")
     
 # Métricas Principais
-    st.subheader("Metricas de Performance")
+    st.subheader("📊 Métricas de Performance")
     
     # Criamos os cabeçalhos das colunas
     col_label1, col_label2, col_label3 = st.columns(3)
@@ -827,7 +1390,7 @@ with st.form("relatorio_form"):
     criar_linha_metrica("CTR (%)", "ctr")
 
     # Investimentos
-    st.subheader("Investimentos por Canal")
+    st.subheader("💰 Investimentos por Canal")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -865,7 +1428,7 @@ with st.form("relatorio_form"):
         investimento_pmax_ano_passado = st.number_input("PMax (Ano Passado)", min_value=0.0, format="%.2f")
     
     # Custos
-    st.subheader("Custos de Eficiencia")
+    st.subheader("💰 Custos")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -890,7 +1453,7 @@ with st.form("relatorio_form"):
         cpm_ano_passado = st.number_input("Custo por Mil Impressões", min_value=0.0, format="%.2f", key="cpm_ano")
     
     # SEO + Content
-    st.subheader("SEO + Content")
+    st.subheader("🔍 SEO + Content")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -929,7 +1492,7 @@ with st.form("relatorio_form"):
     
     top_keywords = st.text_area("Top 10 Palavras-chave do Mês", height=100, placeholder="Liste as principais palavras-chave...")
     
-    submitted = st.form_submit_button("Gerar Relatorio Executivo")
+    submitted = st.form_submit_button("🚀 Gerar Relatório Executivo")
 
 if submitted:
     # Calcular totais e variações
@@ -949,33 +1512,15 @@ if submitted:
                 descricao = descrever_imagem(image)
                 descricoes_imagens.append(f"**[ATUAL] {imagem_file.name}**: {descricao}")
 
-    # Processar imagens do mes passado (sempre com Gemini)
+    # Processar imagens do mês passado (sempre com Gemini)
     descricoes_imagens_mes_passado = []
     if imagens_mes_passado:
-        with st.spinner("Analisando criativos do mes passado..."):
+        with st.spinner("Analisando criativos do mês passado..."):
             for imagem_file in imagens_mes_passado:
                 image = Image.open(imagem_file)
                 descricao = descrever_imagem(image)
                 descricoes_imagens_mes_passado.append(f"**[MES PASSADO] {imagem_file.name}**: {descricao}")
-
-    # Processar criativos da concorrencia - mes atual (sempre com Gemini)
-    descricoes_conc_atual = []
-    if imagens_conc_atual:
-        with st.spinner("Analisando criativos da concorrencia (atual)..."):
-            for imagem_file in imagens_conc_atual:
-                image = Image.open(imagem_file)
-                descricao = descrever_imagem(image)
-                descricoes_conc_atual.append(f"**[CONC. ATUAL] {imagem_file.name}**: {descricao}")
-
-    # Processar criativos da concorrencia - mes passado (sempre com Gemini)
-    descricoes_conc_passado = []
-    if imagens_conc_passado:
-        with st.spinner("Analisando criativos da concorrencia (mes passado)..."):
-            for imagem_file in imagens_conc_passado:
-                image = Image.open(imagem_file)
-                descricao = descrever_imagem(image)
-                descricoes_conc_passado.append(f"**[CONC. MES PASSADO] {imagem_file.name}**: {descricao}")
-
+    
     # Organizar dados
     dados_metrica_performance = {
         'spend_atual': st.session_state.get('spend_atual', 0),
@@ -1120,22 +1665,20 @@ if submitted:
     with st.spinner("Gerando relatório executivo... (isso pode levar alguns minutos)"):
         try:
             # Gerar cada seção sequencialmente
-            analise_yoy = gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens)
-            analise_concorrencia = gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, descricoes_conc_atual, descricoes_conc_passado)
-            contexto_atual = gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia)
-            destaques = gerar_destaques(dados_metrica_performance, contexto_atual)
-            analise_criativos = gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, descricoes_conc_atual, descricoes_conc_passado)
-            analise_midias_pagas = gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos)
-            analise_seo = gerar_analise_seo(dados_seo, analise_midias_pagas)
-            proximos_passos = gerar_proximos_passos(dados_metrica_performance, analise_seo)
+            analise_yoy = gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens, modelo_escolhido)
+            analise_concorrencia = gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, modelo_escolhido)
+            contexto_atual = gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia, modelo_escolhido)
+            destaques = gerar_destaques(dados_metrica_performance, contexto_atual, modelo_escolhido)
+            analise_criativos = gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, modelo_escolhido)
+            analise_midias_pagas = gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos, modelo_escolhido)
+            analise_seo = gerar_analise_seo(dados_seo, analise_midias_pagas, modelo_escolhido)
+            proximos_passos = gerar_proximos_passos(dados_metrica_performance, analise_seo, modelo_escolhido)
             
             # Armazenar resultados
             st.session_state.relatorio_gerado = True
             st.session_state.dados_processados = dados_metrica_performance # Use a variável correta
             st.session_state.descricoes_imagens = descricoes_imagens
             st.session_state.descricoes_imagens_mes_passado = descricoes_imagens_mes_passado
-            st.session_state.descricoes_conc_atual = descricoes_conc_atual
-            st.session_state.descricoes_conc_passado = descricoes_conc_passado
             st.session_state.contexto_atual = contexto_atual
             st.session_state.destaques = destaques
             st.session_state.analise_criativos = analise_criativos
@@ -1151,12 +1694,12 @@ if submitted:
 # Exibir relatório
 if st.session_state.relatorio_gerado:
     st.markdown("---")
-    st.header("Relatorio Executivo Gerado")
+    st.header("📄 Relatório Executivo Gerado")
     
     dados = st.session_state.dados_processados
     
     # Tabela de variações
-    st.subheader("Comparativos de Performance")
+    st.subheader("📊 Comparativos de Performance")
     
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -1189,13 +1732,13 @@ if st.session_state.relatorio_gerado:
     st.markdown("---")
     
     # Seções do relatório
-    st.subheader("Contexto Atual")
+    st.subheader("📌 Contexto Atual")
     st.write(st.session_state.contexto_atual)
     
-    st.subheader("Destaques")
+    st.subheader("⭐ Destaques")
     st.write(st.session_state.destaques)
     
-    st.subheader("Analise de Criativos")
+    st.subheader("🎨 Análise de Criativos")
     if st.session_state.descricoes_imagens:
         st.markdown("**Criativos do Mês Atual:**")
         for desc in st.session_state.descricoes_imagens:
@@ -1206,55 +1749,127 @@ if st.session_state.relatorio_gerado:
             st.markdown(desc)
     st.write(st.session_state.analise_criativos)
     
-    st.subheader("Midias Pagas")
+    st.subheader("💰 Mídias Pagas")
     st.write(st.session_state.analise_midias_pagas)
     
-    st.subheader("SEO + Content")
+    st.subheader("🔍 SEO + Content")
     st.write(st.session_state.analise_seo)
     
-    st.subheader("Proximos Passos e Aprendizados")
+    st.subheader("📈 Próximos Passos e Aprendizados")
     st.write(st.session_state.proximos_passos)
     
     # Botão para baixar relatório
     relatorio_completo = f"""
-# RELATORIO EXECUTIVO -- AGENTE DE RELATORIA EXECUTIVA MACFOR
-**Data:** {datetime.now().strftime('%d/%m/%Y')}
+# RELATÓRIO EXECUTIVO - {datetime.now().strftime('%d/%m/%Y')}
 
----
 
-## Contexto Atual
+## 📌 Contexto Atual
 {st.session_state.contexto_atual}
 
-## Destaques
+## ⭐ Destaques
 {st.session_state.destaques}
 
-## Analise de Criativos
-### Criativos do Mes Atual
+## 🎨 Análise de Criativos
+### Criativos do Mês Atual
 {chr(10).join(st.session_state.descricoes_imagens) if st.session_state.descricoes_imagens else "Nenhum criativo enviado"}
-### Criativos do Mes Passado
-{chr(10).join(st.session_state.descricoes_imagens_mes_passado) if st.session_state.descricoes_imagens_mes_passado else "Nenhum criativo do mes passado enviado"}
-### Criativos da Concorrencia (Atual)
-{chr(10).join(st.session_state.descricoes_conc_atual) if st.session_state.descricoes_conc_atual else "Nenhum criativo de concorrente enviado"}
-### Criativos da Concorrencia (Mes Passado)
-{chr(10).join(st.session_state.descricoes_conc_passado) if st.session_state.descricoes_conc_passado else "Nenhum criativo de concorrente do mes passado enviado"}
+### Criativos do Mês Passado
+{chr(10).join(st.session_state.descricoes_imagens_mes_passado) if st.session_state.descricoes_imagens_mes_passado else "Nenhum criativo do mês passado enviado"}
 {st.session_state.analise_criativos}
 
-## Midias Pagas
+## 💰 Mídias Pagas
 {st.session_state.analise_midias_pagas}
 
-## SEO + Content
+## 🔍 SEO + Content
 {st.session_state.analise_seo}
 
-## Proximos Passos e Aprendizados
+## 📈 Próximos Passos e Aprendizados
 {st.session_state.proximos_passos}
 
 ---
-*Relatorio gerado por IA -- Agente de Relatoria Executiva Macfor -- {datetime.now().strftime('%d/%m/%Y %H:%M')}*
+*Relatório gerado por IA em {datetime.now().strftime('%d/%m/%Y %H:%M')}*
 """
     
-    st.download_button(
-        label="Baixar Relatorio Completo (Markdown)",
-        data=relatorio_completo,
-        file_name=f"relatorio_executivo_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
-        mime="text/markdown"
-    )
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        st.download_button(
+            label="📥 Baixar Relatório (Markdown)",
+            data=relatorio_completo,
+            file_name=f"relatorio_executivo_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+            mime="text/markdown"
+        )
+    with col_dl2:
+        # Gerar DOCX
+        try:
+            # Recuperar dicionários de investimentos, custos e SEO do session_state
+            dados_inv_docx = {
+                'fb_atual': st.session_state.get('fb_atual', 0),
+                'ig_atual': st.session_state.get('ig_atual', 0),
+                'tt_atual': st.session_state.get('tt_atual', 0),
+                'google_atual': st.session_state.get('google_atual', 0),
+                'yt_atual': st.session_state.get('yt_atual', 0),
+                'pmax_atual': st.session_state.get('pmax_atual', 0),
+                'total_atual': (st.session_state.get('fb_atual', 0) + st.session_state.get('ig_atual', 0) +
+                                st.session_state.get('tt_atual', 0) + st.session_state.get('google_atual', 0) +
+                                st.session_state.get('yt_atual', 0) + st.session_state.get('pmax_atual', 0)),
+                'var_fb_mes': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_mes', 0)),
+                'var_ig_mes': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_mes', 0)),
+                'var_tt_mes': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_mes', 0)),
+                'var_google_mes': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_mes', 0)),
+                'var_total_mes': 0,
+                'var_fb_ano': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_ano', 0)),
+                'var_ig_ano': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_ano', 0)),
+                'var_tt_ano': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_ano', 0)),
+                'var_google_ano': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_ano', 0)),
+                'var_total_ano': 0,
+            }
+
+            dados_custos_docx = {
+                'cpc_atual': st.session_state.get('cpc_atual', 0),
+                'cpm_atual': st.session_state.get('cpm_atual', 0),
+                'cpe_atual': st.session_state.get('cpe_atual', 0),
+                'cpv_atual': st.session_state.get('cpv_atual', 0),
+                'var_cpc_mes': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_mes', 0)),
+                'var_cpm_mes': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_mes', 0)),
+                'var_cpe_mes': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_mes', 0)),
+                'var_cpv_mes': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_mes', 0)),
+                'var_cpc_ano': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_ano', 0)),
+                'var_cpm_ano': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_ano', 0)),
+                'var_cpe_ano': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_ano', 0)),
+                'var_cpv_ano': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_ano', 0)),
+            }
+
+            dados_seo_docx = {
+                'vis_total_atual': st.session_state.get('seo_vis_atual', 0),
+                'sess_org_atual': st.session_state.get('seo_sess_org_atual', 0),
+                'vis_org_atual': st.session_state.get('seo_vis_org_atual', 0),
+                'var_vis_total_mes': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_mes', 0)),
+                'var_sess_org_mes': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_mes', 0)),
+                'var_vis_org_mes': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_mes', 0)),
+                'var_vis_total_ano': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_ano', 0)),
+                'var_sess_org_ano': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_ano', 0)),
+                'var_vis_org_ano': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_ano', 0)),
+            }
+
+            docx_buffer = gerar_docx_relatorio(
+                dados=dados,
+                dados_investimentos=dados_inv_docx,
+                dados_custos=dados_custos_docx,
+                dados_seo=dados_seo_docx,
+                contexto_atual=st.session_state.contexto_atual,
+                destaques=st.session_state.destaques,
+                analise_criativos=st.session_state.analise_criativos,
+                analise_midias_pagas=st.session_state.analise_midias_pagas,
+                analise_seo=st.session_state.analise_seo,
+                proximos_passos=st.session_state.proximos_passos,
+                descricoes_imagens=st.session_state.descricoes_imagens,
+                descricoes_imagens_mes_passado=st.session_state.descricoes_imagens_mes_passado,
+            )
+
+            st.download_button(
+                label="📥 Baixar Relatório (DOCX)",
+                data=docx_buffer,
+                file_name=f"relatorio_executivo_syngenta_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        except Exception as e:
+            st.error(f"Erro ao gerar DOCX: {str(e)}")
