@@ -18,7 +18,6 @@ from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.section import WD_ORIENT
 from docx.oxml.ns import qn, nsdecls
 from docx.oxml import parse_xml
-import plotly.graph_objects as go
 
 # =============================================================================
 # CONFIGURAÇÃO INICIAL (DEVE SER A PRIMEIRA COISA DO SCRIPT)
@@ -31,9 +30,7 @@ st.set_page_config(layout="wide", page_title="Relatório Executivo - IA", page_i
 chaves_sessao = [
     'relatorio_gerado', 'descricoes_imagens', 'descricoes_imagens_mes_passado',
     'dados_processados', 'contexto_atual', 'destaques', 'analise_criativos',
-    'analise_midias_pagas', 'analise_seo', 'proximos_passos',
-    'diagnostico_eficiencia', 'red_flags', 'mapa_oportunidades',
-    'relatorio_cliente', 'slides_cliente', 'slides_interno'
+    'analise_midias_pagas', 'analise_seo', 'proximos_passos'
 ]
 
 for chave in chaves_sessao:
@@ -594,8 +591,7 @@ def _aplicar_formatacao_inline(paragraph, texto):
 def gerar_docx_relatorio(dados, dados_investimentos, dados_custos, dados_seo,
                           contexto_atual, destaques, analise_criativos,
                           analise_midias_pagas, analise_seo, proximos_passos,
-                          descricoes_imagens, descricoes_imagens_mes_passado,
-                          diagnostico_eficiencia="", red_flags="", mapa_oportunidades=""):
+                          descricoes_imagens, descricoes_imagens_mes_passado):
     """Gera o relatório executivo completo em DOCX."""
 
     doc = Document()
@@ -755,31 +751,7 @@ def gerar_docx_relatorio(dados, dados_investimentos, dados_custos, dados_seo,
     doc.add_page_break()
 
     # =================================================================
-    # 7. DIAGNÓSTICO DE EFICIÊNCIA OPERACIONAL
-    # =================================================================
-    if diagnostico_eficiencia:
-        doc.add_heading("Diagnóstico de Eficiência Operacional", level=1)
-        _markdown_para_docx(doc, diagnostico_eficiencia)
-        doc.add_page_break()
-
-    # =================================================================
-    # 8. RED FLAGS & PONTOS DE ATENÇÃO
-    # =================================================================
-    if red_flags:
-        doc.add_heading("Red Flags & Pontos de Atenção", level=1)
-        _markdown_para_docx(doc, red_flags)
-        doc.add_page_break()
-
-    # =================================================================
-    # 9. MAPA DE OPORTUNIDADES
-    # =================================================================
-    if mapa_oportunidades:
-        doc.add_heading("Mapa de Oportunidades", level=1)
-        _markdown_para_docx(doc, mapa_oportunidades)
-        doc.add_page_break()
-
-    # =================================================================
-    # 10. PRÓXIMOS PASSOS
+    # 7. PRÓXIMOS PASSOS
     # =================================================================
     doc.add_heading("Próximos Passos e Aprendizados", level=1)
     _markdown_para_docx(doc, proximos_passos)
@@ -808,192 +780,6 @@ def gerar_docx_relatorio(dados, dados_investimentos, dados_custos, dados_seo,
     run.font.color.rgb = MACFOR_AZUL
 
     # Salvar em buffer
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-
-def gerar_docx_cliente(relatorio_cliente, dados, dados_investimentos, dados_custos, dados_seo):
-    """Gera DOCX do relatório para o cliente — narrativo, elegante, focado em valor."""
-    doc = Document()
-    mes_ref = datetime.now().strftime("%B/%Y").replace(
-        "January", "Janeiro").replace("February", "Fevereiro").replace(
-        "March", "Março").replace("April", "Abril").replace(
-        "May", "Maio").replace("June", "Junho").replace(
-        "July", "Julho").replace("August", "Agosto").replace(
-        "September", "Setembro").replace("October", "Outubro").replace(
-        "November", "Novembro").replace("December", "Dezembro")
-
-    _configurar_estilos(doc)
-
-    # Capa diferenciada para o cliente
-    for _ in range(6):
-        doc.add_paragraph()
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("_" * 60)
-    run.font.color.rgb = MACFOR_AZUL_CLARO
-    run.font.size = Pt(10)
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(24)
-    run = p.add_run("RELATÓRIO DE RESULTADOS")
-    run.font.size = Pt(32)
-    run.font.bold = True
-    run.font.color.rgb = MACFOR_AZUL
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(4)
-    run = p.add_run("Performance Digital & Inteligência Estratégica")
-    run.font.size = Pt(14)
-    run.font.color.rgb = MACFOR_CINZA
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(8)
-    run = p.add_run("_" * 60)
-    run.font.color.rgb = MACFOR_AZUL_CLARO
-    run.font.size = Pt(10)
-
-    for _ in range(3):
-        doc.add_paragraph()
-
-    for label, valor in [("PREPARADO PARA", "Syngenta"), ("POR", "Macfor Inteligência Digital"), ("PERÍODO", mes_ref)]:
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(f"{label}: ")
-        run.font.size = Pt(10)
-        run.font.bold = True
-        run.font.color.rgb = MACFOR_AZUL
-        run = p.add_run(valor)
-        run.font.size = Pt(10)
-        run.font.color.rgb = MACFOR_CINZA
-
-    doc.add_page_break()
-    _adicionar_header_footer(doc, mes_ref)
-    _adicionar_sumario(doc)
-
-    # Tabelas de performance
-    doc.add_heading("Painel de Performance", level=1)
-    p = doc.add_paragraph()
-    run = p.add_run("Resultados consolidados do período com variações históricas.")
-    run.font.italic = True
-    run.font.color.rgb = MACFOR_CINZA
-
-    metricas_perf = [
-        ("Investimento", _formatar_numero(dados.get('spend_atual', 0), "R$ "),
-         _formatar_variacao(dados.get('var_invest_mes', 0)), _formatar_variacao(dados.get('var_invest_ano', 0))),
-        ("Alcance", _formatar_numero(dados.get('reach_atual', 0)),
-         _formatar_variacao(dados.get('var_reach_mes', 0)), _formatar_variacao(dados.get('var_reach_ano', 0))),
-        ("Impressões", _formatar_numero(dados.get('imp_atual', 0)),
-         _formatar_variacao(dados.get('var_imp_mes', 0)), _formatar_variacao(dados.get('var_imp_ano', 0))),
-        ("Cliques", _formatar_numero(dados.get('cli_atual', 0)),
-         _formatar_variacao(dados.get('var_cli_mes', 0)), _formatar_variacao(dados.get('var_cli_ano', 0))),
-        ("Engajamentos", _formatar_numero(dados.get('eng_atual', 0)),
-         _formatar_variacao(dados.get('var_eng_mes', 0)), _formatar_variacao(dados.get('var_eng_ano', 0))),
-        ("CTR", _formatar_numero(dados.get('ctr_atual', 0), sufixo="%"),
-         _formatar_variacao(dados.get('var_ctr_mes', 0)), _formatar_variacao(dados.get('var_ctr_ano', 0))),
-    ]
-    _adicionar_tabela_metricas(doc, "Indicadores de Performance", metricas_perf)
-    doc.add_page_break()
-
-    # Corpo narrativo compilado pela IA
-    _markdown_para_docx(doc, relatorio_cliente)
-
-    # Rodapé
-    doc.add_paragraph()
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("_" * 50)
-    run.font.color.rgb = MACFOR_AZUL_CLARO
-    run.font.size = Pt(8)
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("Macfor Inteligência Digital | macfor.com.br")
-    run.font.size = Pt(8)
-    run.font.color.rgb = MACFOR_AZUL
-
-    buffer = io.BytesIO()
-    doc.save(buffer)
-    buffer.seek(0)
-    return buffer
-
-
-def gerar_docx_slides(conteudo_slides, tipo="cliente"):
-    """Gera DOCX com guia de slides (interno ou cliente)."""
-    doc = Document()
-    mes_ref = datetime.now().strftime("%B/%Y").replace(
-        "January", "Janeiro").replace("February", "Fevereiro").replace(
-        "March", "Março").replace("April", "Abril").replace(
-        "May", "Maio").replace("June", "Junho").replace(
-        "July", "Julho").replace("August", "Agosto").replace(
-        "September", "Setembro").replace("October", "Outubro").replace(
-        "November", "Novembro").replace("December", "Dezembro")
-
-    _configurar_estilos(doc)
-
-    # Capa
-    for _ in range(6):
-        doc.add_paragraph()
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = p.add_run("_" * 60)
-    run.font.color.rgb = MACFOR_AZUL_CLARO
-    run.font.size = Pt(10)
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(24)
-    titulo = "GUIA DE SLIDES — APRESENTAÇÃO CLIENTE" if tipo == "cliente" else "GUIA DE SLIDES — REVIEW INTERNO"
-    run = p.add_run(titulo)
-    run.font.size = Pt(26)
-    run.font.bold = True
-    run.font.color.rgb = MACFOR_AZUL
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(4)
-    sub = "Roteiro para produção do deck de apresentação ao cliente Syngenta" if tipo == "cliente" else "Roteiro para review interno da equipe Macfor"
-    run = p.add_run(sub)
-    run.font.size = Pt(12)
-    run.font.color.rgb = MACFOR_CINZA
-
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.paragraph_format.space_before = Pt(8)
-    run = p.add_run("_" * 60)
-    run.font.color.rgb = MACFOR_AZUL_CLARO
-    run.font.size = Pt(10)
-
-    for _ in range(3):
-        doc.add_paragraph()
-    for label, valor in [("CLIENTE", "Syngenta"), ("PERÍODO", mes_ref), ("USO", "Apresentação ao Cliente" if tipo == "cliente" else "Review Interno Macfor")]:
-        p = doc.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(f"{label}: ")
-        run.font.size = Pt(10)
-        run.font.bold = True
-        run.font.color.rgb = MACFOR_AZUL
-        run = p.add_run(valor)
-        run.font.size = Pt(10)
-        run.font.color.rgb = MACFOR_CINZA
-
-    doc.add_page_break()
-    _adicionar_header_footer(doc, mes_ref)
-
-    # Conteúdo
-    doc.add_heading("Roteiro de Slides", level=1)
-    p = doc.add_paragraph()
-    run = p.add_run("Este documento detalha o conteúdo, visual e dados-destaque para cada slide da apresentação. "
-                     "Use como briefing para o time de design.")
-    run.font.italic = True
-    run.font.color.rgb = MACFOR_CINZA
-
-    _markdown_para_docx(doc, conteudo_slides)
-
     buffer = io.BytesIO()
     doc.save(buffer)
     buffer.seek(0)
@@ -1067,856 +853,417 @@ def calcular_variacao(atual, anterior):
 
 def gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é um Diretor de Inteligência de Mercado sênior de uma agência de marketing digital de alta performance (Macfor).
-    Sua entrega NÃO é um relatório de métricas — é uma LEITURA ESTRATÉGICA DE MERCADO que posiciona o cliente como tomador de decisão informado.
-    O cliente (Syngenta — multinacional do agronegócio) espera da Macfor a mesma profundidade analítica que receberia de uma consultoria McKinsey aplicada ao digital.
-
-    Sua missão: transformar variações numéricas em INTELIGÊNCIA DE MERCADO ACIONÁVEL.
-    Para cada dado, responda mentalmente antes de escrever:
-    1. O QUE mudou? (fato)
-    2. POR QUE mudou? (causa provável — sazonalidade agro, pressão competitiva, maturidade de campanha, mudança algorítmica)
-    3. O QUE ISSO SIGNIFICA para o negócio? (implicação estratégica)
-    4. QUAL É O RISCO se não agirmos? (cenário de inação)
-    5. QUAL É A OPORTUNIDADE? (janela estratégica)
+    Você é um analista de inteligência de mercado sênior, responsável por extrair insights de negócio a partir de dados de performance digital.
+    Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
+    Sua missão é transformar variações numéricas em inteligência de mercado acionável — o cliente precisa entender não apenas O QUE mudou, mas POR QUE mudou e O QUE ISSO SIGNIFICA para o negócio dele.
 
     Compare o desempenho ATUAL (2026) com o MESMO MÊS DO ANO PASSADO (2025) e extraia inteligência competitiva.
 
     **TABELA DE VARIAÇÕES YoY (Ano sobre Ano):**
-    | Métrica | Variação YoY |
-    |---------|-------------|
-    | Investimento | {dados_metrica_performance.get('var_invest_ano', 0):+.1f}% |
-    | Sessões no Site | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-    | Alcance (Reach) | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Video Thruplays | {dados_metrica_performance.get('var_vtp_ano', 0):+.1f}% |
-    | Visualizações | {dados_metrica_performance.get('var_vis_ano', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('var_imp_ano', 0):+.1f}% |
-    | Cliques | {dados_metrica_performance.get('var_cli_ano', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('var_eng_ano', 0):+.1f}% |
-    | CTR (%) | {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}% |
+    - Investimento: {dados_metrica_performance.get('var_invest_ano', 0):+.1f}%
+    - Sessões no Site: {dados_metrica_performance.get('var_sess_ano', 0):+.1f}%
+    - Alcance (Reach): {dados_metrica_performance.get('var_reach_ano', 0):+.1f}%
+    - Video Thruplays: {dados_metrica_performance.get('var_vtp_ano', 0):+.1f}%
+    - Visualizações: {dados_metrica_performance.get('var_vis_ano', 0):+.1f}%
+    - Impressões: {dados_metrica_performance.get('var_imp_ano', 0):+.1f}%
+    - Cliques: {dados_metrica_performance.get('var_cliques_ano', 0):+.1f}%
+    - Engajamentos: {dados_metrica_performance.get('var_eng_ano', 0):+.1f}%
+    - CTR (%): {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}%
 
-    **TABELA DE VARIAÇÕES MoM (Mês sobre Mês):**
-    | Métrica | Variação MoM |
-    |---------|-------------|
-    | Investimento | {dados_metrica_performance.get('var_invest_mes', 0):+.1f}% |
-    | Sessões no Site | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% |
-    | Alcance (Reach) | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% |
-    | Video Thruplays | {dados_metrica_performance.get('var_vtp_mes', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('var_imp_mes', 0):+.1f}% |
-    | Cliques | {dados_metrica_performance.get('var_cli_mes', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('var_eng_mes', 0):+.1f}% |
-    | CTR (%) | {dados_metrica_performance.get('var_ctr_mes', 0):+.1f}% |
-
-    **VALORES ABSOLUTOS ATUAIS:**
-    - Investimento: R$ {dados_metrica_performance.get('spend_atual', 0):,.2f}
-    - Sessões: {dados_metrica_performance.get('sess_atual', 0):,}
-    - Alcance: {dados_metrica_performance.get('reach_atual', 0):,}
-    - Impressões: {dados_metrica_performance.get('imp_atual', 0):,}
-    - Cliques: {dados_metrica_performance.get('cli_atual', 0):,}
-    - Engajamentos: {dados_metrica_performance.get('eng_atual', 0):,}
-    - CTR: {dados_metrica_performance.get('ctr_atual', 0):.2f}%
-
-    **FRAMEWORK DE ANÁLISE OBRIGATÓRIO:**
-
-    1. **ANÁLISE DE CORRELAÇÕES CRUZADAS:**
-       - Cruze SEMPRE investimento vs. resultado: se o investimento caiu X% mas cliques subiram Y%, calcule o ganho de eficiência por real investido e comunique como "Efeito Tesoura" ou "Ganho de Produtividade Digital".
-       - Cruze alcance vs. sessões: se alcance caiu mas sessões subiram, interprete como qualificação de audiência.
-       - Cruze impressões vs. CTR: se impressões caíram mas CTR subiu, a mensagem está mais relevante para o público alcançado.
-       - Cruze engajamento vs. cliques: se engajamento subiu mais que cliques, o conteúdo está gerando conversa (brand awareness); se cliques subiram mais, está gerando demanda.
-
-    2. **CONTEXTO DO AGRONEGÓCIO (SYNGENTA):**
-       - Considere o calendário safra (safrinha, safra de verão, entressafra) ao interpretar variações.
-       - O setor agro tem ciclos de decisão longos — variações de curto prazo podem refletir movimentos de meses atrás.
-       - Relacione com possíveis eventos do setor (feiras, lançamentos de produto, safra).
-
-    3. **DIAGNÓSTICO ESTRATÉGICO:**
-       - Classifique a saúde da operação: ACELERAÇÃO (métricas-chave subindo), MANUTENÇÃO (estável), ATENÇÃO (sinais de desaceleração), ou ALERTA (quedas generalizadas).
-       - Identifique métricas que estão DESCOLADAS do padrão (ex: tudo subiu mas uma métrica caiu — por quê?).
-
-    4. **PONTOS POSITIVOS (com evidência numérica):**
-       - Liste os 3 maiores ganhos do período e explique o que cada um representa para o negócio.
-
-    5. **RED FLAGS (sinais de alerta):**
-       - Se alguma métrica caiu mais de 15%, classifique como RED FLAG e proponha hipótese de causa.
-       - Se custos (CPC/CPM) subiram enquanto resultados caíram, sinalize pressão competitiva.
-
-    **Descrições dos criativos utilizados no período:**
-    {chr(10).join(descricoes_imagens) if descricoes_imagens else "Nenhum criativo fornecido para análise."}
-
-    **FORMATO:** Texto analítico e consultivo, sem repetições. Tom de devolutiva estratégica de alto nível.
-    Estruture em: Panorama Geral > Correlações Estratégicas > Pontos Positivos > Red Flags > Implicações para o Negócio.
+    **INSTRUÇÃO DE INTELIGÊNCIA DE MERCADO:**
+    Extraia insights de negócio a partir das correlações entre métricas. Exemplos:
+    - Se o investimento subiu 10% mas os cliques subiram 30%, comunique ao cliente que a estratégia está gerando retorno acelerado — cada real investido rende mais resultado.
+    - Se o alcance caiu mas as sessões subiram, interprete como melhoria na qualificação do público — estamos alcançando menos pessoas, mas as certas.
+    - Identifique sinais de maturidade digital, saturação de canal ou oportunidades de reposicionamento.
+    - Relacione as variações com possíveis movimentos de mercado (sazonalidade, concorrência, comportamento do consumidor).
+    Considere também as descrições dos criativos: {chr(10).join(descricoes_imagens)}
     """
     return gerar_texto(prompt, modelo_escolhido)
 
 def gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o Head de Inteligência Competitiva da Macfor, agência de marketing digital de alta performance.
-    Sua entrega é uma análise que posiciona o cliente (Syngenta) com clareza sobre seu cenário competitivo — como uma consultoria estratégica faria, mas aplicada ao universo digital.
+    Você é um estrategista de inteligência competitiva. Este documento é uma devolutiva para o cliente que contratou nosso serviço de marketing digital.
+    Sua missão é extrair inteligência de mercado que ajude o cliente a entender seu posicionamento competitivo e tomar decisões estratégicas de negócio.
 
-    **DADOS DE PERFORMANCE DA SYNGENTA (Período Atual):**
-    - Investimento Total: R$ {dados_metrica_performance.get('spend_atual', 0):,.2f}
-    - Alcance: {dados_metrica_performance.get('reach_atual', 0):,}
-    - Impressões: {dados_metrica_performance.get('imp_atual', 0):,}
+    **Dados de Performance da Nossa Marca (Atual):**
+    - Investimento: R$ {dados_metrica_performance.get('investimento_total_atual', 0):,.2f}
+    - Alcance: {dados_metrica_performance.get('reach_atual', 0)}
+    - Impressões: {dados_metrica_performance.get('impressoes_atual', 0)}
     - CTR: {dados_metrica_performance.get('ctr_atual', 0):.2f}%
-    - Cliques: {dados_metrica_performance.get('cli_atual', 0):,}
-    - Engajamentos: {dados_metrica_performance.get('eng_atual', 0):,}
-    - Sessões no Site: {dados_metrica_performance.get('sess_atual', 0):,}
+    - Cliques: {dados_metrica_performance.get('cliques_atual', 0)}
 
-    **VARIAÇÕES YoY da Syngenta:**
-    - Investimento: {dados_metrica_performance.get('var_invest_ano', 0):+.1f}%
-    - Cliques: {dados_metrica_performance.get('var_cli_ano', 0):+.1f}%
-    - CTR: {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}%
-    - Impressões: {dados_metrica_performance.get('var_imp_ano', 0):+.1f}%
-
-    **INTELIGÊNCIA COMPETITIVA (Reportado pelo usuário):**
+    **Informações sobre a Concorrência (Reportado pelo usuário):**
     {info_concorrentes if info_concorrentes else "Nenhuma informação específica fornecida sobre os movimentos dos concorrentes."}
 
-    **FRAMEWORK DE ANÁLISE COMPETITIVA OBRIGATÓRIO:**
+    **DIRETRIZES DE INTELIGÊNCIA COMPETITIVA:**
+    1. Traduza os dados em posicionamento de mercado: onde o cliente está forte e onde há vulnerabilidades.
+    2. Identifique oportunidades de diferenciação estratégica (ex: se o concorrente foca em preço, demonstre como a estratégia de autoridade/qualidade gera vantagem competitiva sustentável).
+    3. Aponte movimentos de mercado que representem ameaças ou janelas de oportunidade para o negócio do cliente.
+    4. Não repita informações. Foque em inteligência acionável que gere valor para a tomada de decisão do cliente.
 
-    1. **MAPA DE POSICIONAMENTO DIGITAL:**
-       - Com base nos dados disponíveis, posicione a Syngenta no cenário competitivo digital do agro.
-       - Se temos dados de concorrentes, compare diretamente. Se não, analise a performance da Syngenta contra benchmarks conhecidos do setor agro digital (CTR médio agro: 0.8-1.5%, CPC médio agro: R$1.50-3.00).
-       - Identifique: onde a Syngenta está ACIMA do mercado (vantagem competitiva) e onde está ABAIXO (vulnerabilidade).
-
-    2. **ANÁLISE DE AMEAÇAS:**
-       - Identifique sinais de pressão competitiva nos dados (ex: CPC subindo pode indicar mais concorrentes no leilão de ads).
-       - Se o custo por resultado está subindo sem aumento de investimento dos concorrentes, pode ser saturação de canal.
-       - Aponte quais movimentos competitivos exigem resposta estratégica.
-
-    3. **JANELAS DE OPORTUNIDADE:**
-       - Identifique espaços onde a Syngenta pode avançar antes da concorrência.
-       - Analise: canais subutilizados, formatos emergentes, nichos de audiência desprotegidos.
-       - Considere o timing do agronegócio (safra, entressafra, feiras).
-
-    4. **ANÁLISE SWOT DIGITAL (resumida):**
-       - Forças: métricas acima do benchmark
-       - Fraquezas: métricas abaixo do benchmark ou em queda
-       - Oportunidades: gaps competitivos identificados
-       - Ameaças: pressões de mercado detectadas
-
-    5. **SHARE OF VOICE ESTIMADO:**
-       - Com base no investimento e alcance, estime a participação da Syngenta no "share of voice" digital do setor.
-       - Se o investimento caiu mas o alcance se manteve, a eficiência de mídia está gerando vantagem competitiva.
-
-    **FORMATO:** Texto analítico e consultivo. Tom de briefing estratégico para C-Level.
-    Estruture em: Posicionamento Competitivo > Ameaças Identificadas > Oportunidades Estratégicas > SWOT Digital > Recomendações de Posicionamento.
-    CASO NÃO TENHA INFORMAÇÃO DE CONCORRENTES, analise a posição da Syngenta contra benchmarks do setor e sinalize que a coleta de inteligência competitiva deve ser priorizada.
+    Seja analítico, profissional e focado em gerar inteligência de negócio para o cliente.
+    CASO NÃO TENHA INFORMAÇÃO, NÃO INVENTE, APENAS DIGA QUE NÃO HÁ DADOS SUFICIENTES PARA ANALISAR A CONCORRÊNCIA.
     """
     return gerar_texto(prompt, modelo_escolhido)
 
 def gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o Diretor de Estratégia e Inteligência de Mercado da Macfor — a seção "CONTEXTO ATUAL" é a ABERTURA do relatório executivo.
-    Ela precisa funcionar como um BRIEFING ESTRATÉGICO DE ALTO NÍVEL que, em poucos parágrafos, posicione o C-Level da Syngenta sobre:
-    (a) o que aconteceu, (b) por que aconteceu, (c) o que isso significa para o negócio, (d) o que deve ser feito.
+    Você é um Diretor de Estratégia e Inteligência de Mercado. Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
+    Seu objetivo é extrair inteligência de negócio dos dados brutos, transformando números em visão estratégica que demonstre ao cliente o valor gerado pela operação de marketing digital.
+    A seção "CONTEXTO ATUAL" deve abrir o relatório com uma leitura de mercado que posicione o cliente sobre o cenário competitivo, a eficiência do investimento e as oportunidades identificadas.
 
-    Pense como um sócio de consultoria estratégica entregando um board paper — cada frase deve gerar valor de decisão.
+    ### 1. ORIENTAÇÃO PARA EXTRAÇÃO DE INTELIGÊNCIA (O QUE EXPOR):
+    Para cada página do slide, você deve filtrar os dados seguindo estes critérios de inteligência de negócio:
 
-    ### DADOS DE ENTRADA (INTELLIGENCE FEED):
+    - **Priorize Variações Significativas:** Se uma métrica variou mais de 10% (YoY), ela deve ser o destaque. Se ficou estável, mencione apenas como "manutenção de eficiência".
+    - **Correlação Obrigatória:** Nunca apresente um custo (CPC/CPM) sem correlacioná-lo à causa (Concorrência ou Qualidade do Criativo). O cliente precisa entender a dinâmica de mercado por trás do número.
+    - **Foco em ROI e Valor Gerado:** Selecione os dados que demonstrem ao cliente como o investimento se traduziu em resultados de negócio — não apenas métricas, mas impacto real em visibilidade, autoridade e geração de demanda.
+    - **Destaque Criativo:** Selecione apenas as descrições de imagens que justificam o CTR atual. Se o CTR subiu, identifique qual elemento visual nos criativos foi o provável responsável.
 
-    **1. ANÁLISE HISTÓRICA YoY (já processada):**
+    ### DADOS DISPONÍVEIS PARA CURADORIA:
+    **1. ANÁLISE DE PERFORMANCE (Histórico YoY):**
     {analise_yoy}
-
-    **2. CENÁRIO COMPETITIVO (já processado):**
+    **2. CENÁRIO DE MERCADO (Concorrência):**
     {analise_concorrencia}
-
-    **3. PAINEL DE INVESTIMENTO:**
-    | Canal | Investimento Atual | Var. MoM | Var. YoY |
-    |-------|-------------------|----------|----------|
-    | Total | R$ {dados_investimentos.get('total_atual', 0):,.2f} | {dados_investimentos.get('var_total_mes', 0):+.1f}% | {dados_investimentos.get('var_total_ano', 0):+.1f}% |
-    | Meta (FB+IG) | R$ {dados_investimentos.get('fb_atual', 0) + dados_investimentos.get('ig_atual', 0):,.2f} | — | — |
-    | Google Ads | R$ {dados_investimentos.get('google_atual', 0):,.2f} | {dados_investimentos.get('var_google_mes', 0):+.1f}% | {dados_investimentos.get('var_google_ano', 0):+.1f}% |
-    | TikTok | R$ {dados_investimentos.get('tt_atual', 0):,.2f} | {dados_investimentos.get('var_tt_mes', 0):+.1f}% | {dados_investimentos.get('var_tt_ano', 0):+.1f}% |
-
-    **4. PAINEL DE EFICIÊNCIA:**
-    | Indicador | Valor Atual | Var. MoM | Var. YoY |
-    |-----------|------------|----------|----------|
-    | CPC | R$ {dados_custos.get('cpc_atual', 0):.2f} | {dados_custos.get('var_cpc_mes', 0):+.1f}% | {dados_custos.get('var_cpc_ano', 0):+.1f}% |
-    | CPM | R$ {dados_custos.get('cpm_atual', 0):.2f} | {dados_custos.get('var_cpm_mes', 0):+.1f}% | {dados_custos.get('var_cpm_ano', 0):+.1f}% |
-    | CPE | R$ {dados_custos.get('cpe_atual', 0):.2f} | {dados_custos.get('var_cpe_mes', 0):+.1f}% | {dados_custos.get('var_cpe_ano', 0):+.1f}% |
-    | CTR | {dados_metrica_performance.get('ctr_atual', 0):.2f}% | {dados_metrica_performance.get('var_ctr_mes', 0):+.1f}% | {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}% |
-
-    **5. PAINEL DE RESULTADOS:**
-    | Métrica | Valor Atual | Var. MoM | Var. YoY |
-    |---------|------------|----------|----------|
-    | Alcance | {dados_metrica_performance.get('reach_atual', 0):,} | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('imp_atual', 0):,} | {dados_metrica_performance.get('var_imp_mes', 0):+.1f}% | {dados_metrica_performance.get('var_imp_ano', 0):+.1f}% |
-    | Cliques | {dados_metrica_performance.get('cli_atual', 0):,} | {dados_metrica_performance.get('var_cli_mes', 0):+.1f}% | {dados_metrica_performance.get('var_cli_ano', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('eng_atual', 0):,} | {dados_metrica_performance.get('var_eng_mes', 0):+.1f}% | {dados_metrica_performance.get('var_eng_ano', 0):+.1f}% |
-    | Sessões | {dados_metrica_performance.get('sess_atual', 0):,} | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-
-    **6. CRIATIVOS:**
+    **3. INDICADORES DE INVESTIMENTO:**
+    - Total Investido: R$ {dados_investimentos.get('total_atual', 0):,.2f} (Var. YoY: {dados_investimentos.get('var_total_ano', 0):+.1f}%)
+    - Google Ads: R$ {dados_investimentos.get('google_atual', 0):,.2f}
+    - Meta (FB+IG): R$ {dados_investimentos.get('fb_atual', 0) + dados_investimentos.get('ig_atual', 0):,.2f}
+    - TikTok: R$ {dados_investimentos.get('tt_atual', 0):,.2f}
+    **4. INDICADORES DE CUSTO E EFICIÊNCIA:**
+    - CPC Atual: R$ {dados_custos.get('cpc_atual', 0):.2f} (Variação YoY: {dados_custos.get('var_cpc_ano', 0):+.1f}%)
+    - CPM Atual: R$ {dados_custos.get('cpm_atual', 0):.2f}
+    - CTR Atual: {dados_metrica_performance.get('ctr_atual', 0):.2f}%
+    **5. ALCANCE E ENGAJAMENTO:**
+    - Alcance Total: {dados_metrica_performance.get('reach_atual', 0):,.0f}
+    - Cliques Totais: {dados_metrica_performance.get('cliques_atual', 0):,.0f}
+    **Descrições dos Criativos Utilizados:**
     {chr(10).join(descricoes_imagens) if descricoes_imagens else "Nenhuma imagem fornecida"}
 
-    ### FRAMEWORK DE ANÁLISE OBRIGATÓRIO:
+    ### FORMATO DA RESPOSTA ESPERADA:
 
-    **A) DIAGNÓSTICO DE SAÚDE DA OPERAÇÃO DIGITAL:**
-    Classifique em: ACELERAÇÃO / MANUTENÇÃO / ATENÇÃO / ALERTA — com justificativa baseada em dados.
+    **PARTE 1: INTELIGÊNCIA DE MERCADO (POR PILAR)**
+    Não repita informações, detalhe tudo mas seja objetivo para que não fique extenso.
+    Para cada pilar, extraia a inteligência de negócio que o cliente precisa para tomar decisões:
+    - **Saúde Financeira:** Qual o retorno real do investimento? O cliente está pagando mais ou menos por resultado? O que isso revela sobre o mercado?
+    - **Pressão de Mercado:** O que os movimentos de custo e concorrência revelam sobre o cenário competitivo? Há sinais de saturação ou oportunidade?
+    - **Alavancagem Criativa:** Os criativos estão gerando diferenciação competitiva? Qual é o impacto mensurável da estratégia de conteúdo nos resultados de negócio?
 
-    **B) ANÁLISE POR PILAR ESTRATÉGICO:**
-    1. **Saúde Financeira e ROI:** O cliente está pagando mais ou menos por resultado? Calcule "custo por resultado" implícito e compare com períodos anteriores. Se investimento caiu mas resultados se mantiveram, destaque o EFEITO TESOURA como ganho de produtividade.
-    2. **Pressão de Mercado e Competitividade:** O que os custos de mídia revelam sobre a dinâmica competitiva? CPC/CPM subindo = mais concorrentes no leilão. CPC/CPM caindo = oportunidade de dominar share.
-    3. **Alavancagem Criativa:** Os criativos estão gerando diferenciação? Correlacione CTR com elementos visuais/narrativos identificados. CTR acima de 1.5% no agro = criativo excepcional.
-    4. **Funil de Conversão Digital:** Analise o fluxo Impressões > Cliques > Sessões. Onde há gargalo? Onde há eficiência?
-    5. **Maturidade Digital:** Avalie se a operação está construindo ativos digitais de longo prazo (audiência, autoridade, dados de público) ou apenas comprando resultados pontuais.
-
-    **C) PONTOS POSITIVOS (TOP 3):** com evidência numérica e implicação para o negócio.
-    **D) RED FLAGS (sinais de alerta):** métricas que exigem atenção imediata, com causa provável e risco de inação.
-    **E) PONTOS DE MELHORIA:** oportunidades de otimização identificadas nos dados.
-
-    ### FORMATO:
-    Texto analítico de alto nível, consultivo, sem repetições.
-    Estruture em: Diagnóstico Geral > Pilares Estratégicos > Pontos Positivos > Red Flags > Pontos de Melhoria > Pautas Sugeridas para Slides.
-    Ao sugerir slides: se investimento caiu mas resultados se mantiveram, sugira "Gráfico de Efeito Tesoura".
+    **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
+    Com base na inteligência extraída acima, defina o que DEVE constar em cada página dos slides para apresentação ao cliente, priorizando os insights de maior valor estratégico para o negócio.
+    Em situações onde houver uma redução significativa de Investimento (YoY ou MoM) acompanhada pela manutenção ou crescimento de métricas de engajamento (Cliques ou CTR), você deve sugerir a criação de um "Gráfico de Efeito Tesoura"
     """
 
     return gerar_texto(prompt, modelo_escolhido)
 
 
+
+# DESTAQUES
+#FALAR SOBRE OS CRIATIVOS E AS CAMPANHAS
+#COLOCAR AS CAMPANHAS QUE TIVERAM MELHOR DESEMPENHO NO BANCO
+#IDENTIFICAR OS PRODUROS QUE TIVERAM MELHOR DESEMPENHO NO BANCO
+#EFICACIA DE INVESTIMENTO EM CADA CULTURA OU PRODUTO
 def gerar_destaques(dados_metrica_performance, contexto_atual, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o Head de Inteligência de Negócio da Macfor. Esta seção é o HIGHLIGHT REEL do relatório — os 5-7 insights de MAIOR IMPACTO ESTRATÉGICO do período.
-    Cada destaque deve funcionar como um "headline" de inteligência: uma frase de abertura que capture a atenção do C-Level, seguida de contexto analítico que demonstre profundidade.
+    Você é um especialista em inteligência de negócio aplicada a marketing digital. Este documento é uma devolutiva para o cliente que contratou nosso serviço.
+    Com base no contexto e nos dados de desempenho, extraia 3-5 DESTAQUES que representem as principais descobertas de inteligência de mercado do período.
+    Cada destaque deve ser uma conclusão de negócio — não um dado isolado, mas um insight estratégico que demonstre o valor gerado e oriente decisões do cliente.
 
-    O cliente (Syngenta) espera que cada destaque responda: "O que isso significa para o meu negócio e o que eu devo fazer?"
-
-    **CONTEXTO ACUMULADO (já processado):**
+    **Contexto Atual:**
     {contexto_atual}
 
-    **DADOS DE PERFORMANCE COMPLETOS:**
-    | Métrica | Atual | Var. MoM | Var. YoY |
-    |---------|-------|----------|----------|
-    | Investimento | R$ {dados_metrica_performance.get('spend_atual', 0):,.2f} | {dados_metrica_performance.get('var_invest_mes', 0):+.1f}% | {dados_metrica_performance.get('var_invest_ano', 0):+.1f}% |
-    | Sessões | {dados_metrica_performance.get('sess_atual', 0):,} | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-    | Alcance | {dados_metrica_performance.get('reach_atual', 0):,} | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('imp_atual', 0):,} | {dados_metrica_performance.get('var_imp_mes', 0):+.1f}% | {dados_metrica_performance.get('var_imp_ano', 0):+.1f}% |
-    | Cliques | {dados_metrica_performance.get('cli_atual', 0):,} | {dados_metrica_performance.get('var_cli_mes', 0):+.1f}% | {dados_metrica_performance.get('var_cli_ano', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('eng_atual', 0):,} | {dados_metrica_performance.get('var_eng_mes', 0):+.1f}% | {dados_metrica_performance.get('var_eng_ano', 0):+.1f}% |
-    | CTR | {dados_metrica_performance.get('ctr_atual', 0):.2f}% | {dados_metrica_performance.get('var_ctr_mes', 0):+.1f}% | {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}% |
+    **Dados Comparativos:**
+    - Visualizações: Atual {dados_metrica_performance.get('visualizacoes_atual', 0)} | Mês Passado {dados_metrica_performance.get('visualizacoes_mes_passado', 0)} | Variação: {dados_metrica_performance.get('var_visualizacoes_mes', 0):.1f}%
+    - Impressões: Atual {dados_metrica_performance.get('impressoes_atual', 0)} | Mês Passado {dados_metrica_performance.get('impressoes_mes_passado', 0)} | Variação: {dados_metrica_performance.get('var_impressoes_mes', 0):.1f}%
+    - Cliques: Atual {dados_metrica_performance.get('cliques_atual', 0)} | Mês Passado {dados_metrica_performance.get('cliques_mes_passado', 0)} | Variação: {dados_metrica_performance.get('var_cliques_mes', 0):.1f}%
+    - Engajamentos: Atual {dados_metrica_performance.get('engajamentos_atual', 0)} | Mês Passado {dados_metrica_performance.get('engajamentos_mes_passado', 0)} | Variação: {dados_metrica_performance.get('var_engajamentos_mes', 0):.1f}%
 
-    **CRIATIVOS ANALISADOS:**
-    {chr(10).join(st.session_state.get('descricoes_imagens', [])) if st.session_state.get('descricoes_imagens') else "Sem criativos — usar placeholders."}
 
-    ### FRAMEWORK OBRIGATÓRIO PARA CADA DESTAQUE:
+    **INFO DE PRODUTO/CRIATIVO:**
+    {descricoes_imagens if descricoes_imagens else "INFORMAÇÃO NÃO DISPONÍVEL"}
+    **DIRETRIZES DE INTELIGÊNCIA DE NEGÓCIO PARA OS DESTAQUES:**
+    1. **Filtro de Relevância:** Se uma métrica caiu devido ao corte de verba (citado no contexto), mas a eficiência (CTR/CPC) subiu, o destaque DEVE ser a eficiência — comunique ao cliente que o investimento está rendendo mais.
+    2. **Ausência de Dados:** Caso a seção "INFO DE PRODUTO/CRIATIVO" esteja como não disponível, você deve incluir uma observação no destaque: "[INSERIR DETALHES DO POST/PRODUTO CAMPEÃO]" para que o usuário saiba onde completar.
+    3. **Ação de Efeito Tesoura:** Se o investimento caiu e o resultado subiu/manteve, crie um destaque chamado "Descolamento de Performance (Efeito Tesoura)" — este é um insight de alto valor que demonstra maturidade da estratégia.
+    4. **Tom de Voz:** Consultivo, direto, focado em inteligência de mercado, ROI e valor gerado para o negócio do cliente.
 
-    Para cada destaque, siga esta estrutura mental (mas escreva de forma fluida, não como formulário):
-    1. **HEADLINE:** Uma frase de impacto que capture o insight (ex: "Efeito Tesoura: investimento menor, resultado maior")
-    2. **EVIDÊNCIA:** Dados que sustentam o insight (variações, correlações)
-    3. **SIGNIFICADO:** O que isso revela sobre o mercado/público/estratégia
-    4. **IMPLICAÇÃO:** O que o cliente deve fazer com essa informação
+    ### FORMATO DA RESPOSTA ESPERADA:
+    **PARTE 1: CRIE UM TEXTO ABORDANDO OS DESTAQUES**
+    Não repita informações, detalhe tudo mas seja objetivo para que não fique extenso
 
-    ### CATEGORIAS OBRIGATÓRIAS DE DESTAQUES:
+    **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
+    Com base na inteligência extraída acima, defina o que DEVE constar em cada página dos slides para apresentação ao cliente — priorizando os insights de maior impacto para o negócio.
+    Se os dados de Criativos faltarem: Indicar placeholder: "[Inserir miniatura do post de maior CTR para análise visual]"
 
-    1. **DESTAQUE DE EFICIÊNCIA:** Se investimento caiu mas resultado subiu/manteve → "Efeito Tesoura" / "Ganho de Produtividade Digital"
-    2. **DESTAQUE DE CRESCIMENTO:** A métrica de maior crescimento positivo e o que ela indica
-    3. **DESTAQUE DE RISCO:** A principal RED FLAG do período — métrica preocupante com causa e recomendação
-    4. **DESTAQUE DE OPORTUNIDADE:** Janela estratégica identificada nos dados que o cliente deveria capitalizar
-    5. **DESTAQUE COMPETITIVO:** O que a performance digital revela sobre o posicionamento da Syngenta vs. mercado
-
-    Se faltar informação de criativos, use: "[INSERIR: criativo/produto campeão do período para análise visual]"
-
-    ### FORMATO:
-    Texto analítico com cada destaque claramente separado por subtítulo.
-    Tom: consultivo, direto, orientado a decisão. Cada destaque deve gerar uma reação no cliente ("preciso agir sobre isso").
-    Ao final, sugira pautas para slides priorizando os destaques de maior impacto.
-    """
+"""
 
     return gerar_texto(prompt, modelo_escolhido)
 
 def gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o Head de Inteligência Criativa da Macfor — sua análise transforma peças visuais em INTELIGÊNCIA DE NEGÓCIO.
-    O cliente (Syngenta) não quer saber apenas "o que o criativo mostra" — quer entender o IMPACTO MENSURÁVEL de cada decisão criativa no resultado de negócio.
+    Você é um especialista em inteligência criativa para marketing digital. Este documento é uma devolutiva para o cliente que contratou nosso serviço.
+    Com base nos DESTAQUES e nas descrições dos criativos, extraia inteligência de negócio sobre a performance dos CRIATIVOS.
+    A análise deve ir além da descrição — deve revelar ao cliente POR QUE determinados criativos funcionaram, O QUE isso indica sobre o comportamento do público-alvo e COMO essa inteligência pode ser capitalizada nas próximas campanhas.
 
-    **DESTAQUES DO PERÍODO (contexto acumulado):**
+    **Destaques do Período:**
     {destaques}
+    
+    **Descrições dos Criativos (Mês Atual):**
+    {chr(10).join(descricoes_imagens) if descricoes_imagens else "Nenhuma imagem fornecida"}
 
-    **CRIATIVOS DO MÊS ATUAL:**
-    {chr(10).join(descricoes_imagens) if descricoes_imagens else "Nenhum criativo do mês atual fornecido."}
+    **Descrições dos Criativos (Mês Passado):**
+    {chr(10).join(descricoes_imagens_mes_passado) if descricoes_imagens_mes_passado else "Nenhuma imagem do mês passado fornecida"}
 
-    **CRIATIVOS DO MÊS PASSADO (para comparação evolutiva):**
-    {chr(10).join(descricoes_imagens_mes_passado) if descricoes_imagens_mes_passado else "Nenhum criativo do mês passado fornecido."}
+    **INSTRUÇÃO DE COMPARAÇÃO CRIATIVA:**
+    Se houver criativos do mês atual E do mês passado, compare a evolução da estratégia criativa.
+    Identifique: mudanças de abordagem, elementos que foram mantidos (e por quê funcionam), e o que a transição criativa revela sobre o aprendizado da campanha.
+    Correlacione as mudanças criativas com as variações de performance (cliques, engajamento, CTR) para demonstrar causa e efeito ao cliente.
 
-    **INDICADORES DE EFICIÊNCIA CRIATIVA:**
-    | Indicador | Valor | Var. MoM | Var. YoY |
-    |-----------|-------|----------|----------|
-    | CPE | R$ {dados_custos.get('cpe_atual', 0):.2f} | {dados_custos.get('var_cpe_mes', 0):+.1f}% | {dados_custos.get('var_cpe_ano', 0):+.1f}% |
-    | CPC | R$ {dados_custos.get('cpc_atual', 0):.2f} | {dados_custos.get('var_cpc_mes', 0):+.1f}% | {dados_custos.get('var_cpc_ano', 0):+.1f}% |
-    | CPV | R$ {dados_custos.get('cpv_atual', 0):.2f} | {dados_custos.get('var_cpv_mes', 0):+.1f}% | {dados_custos.get('var_cpv_ano', 0):+.1f}% |
-    | CPM | R$ {dados_custos.get('cpm_atual', 0):.2f} | {dados_custos.get('var_cpm_mes', 0):+.1f}% | {dados_custos.get('var_cpm_ano', 0):+.1f}% |
+    **Métricas de Performance (Período Atual):**
+    - Visualizações: {dados_metrica_performance.get('vis_atual', 0)}
+    - Impressões: {dados_metrica_performance.get('imp_atual', 0)}
+    - Cliques: {dados_metrica_performance.get('cli_atual', 0)}
+    - Engajamentos: {dados_metrica_performance.get('eng_atual', 0)}
 
-    ### FRAMEWORK DE INTELIGÊNCIA CRIATIVA (7 DIMENSÕES):
+    **Métricas de Criativos:**
+    - Custo por Engajamento: R$ {dados_custos.get('cpe_atual', 0):.2f}
+    - Custo por Clique: R$ {dados_custos.get('cpc_atual', 0):.2f}
 
-    **1. ESTRATÉGIA NARRATIVA E POSICIONAMENTO:**
-    - Qual é a narrativa central? (autoridade técnica, identificação com produtor, aspiracional, educacional)
-    - O posicionamento criativo está alinhado com os objetivos de negócio da Syngenta?
-    - Como essa narrativa se diferencia dos concorrentes no agro?
+    DIRETRIZES DE INTELIGÊNCIA CRIATIVA
 
-    **2. PSICOLOGIA DO PÚBLICO-ALVO:**
-    - Quais gatilhos psicológicos estão sendo ativados? (urgência safra, medo de perda, prova social, autoridade técnica)
-    - O criativo "fala a língua" do produtor rural? (regionalismo, linguagem técnica, visual de campo)
-    - Qual é o nível de sofisticação da abordagem vs. o que o público espera?
+1. CONTEXTO E CONCEITO CRIATIVO
+Identifique a estratégia narrativa por trás dos conteúdos e explique ao cliente O QUE essa escolha revela sobre o posicionamento da marca no mercado.
+Analise elementos como:
 
-    **3. ANÁLISE DE EVOLUÇÃO CRIATIVA (se houver mês anterior):**
-    - O que mudou de um mês para outro e POR QUE essa mudança faz sentido estrategicamente?
-    - Quais elementos foram mantidos (e funcionam como "âncora de marca")?
-    - A evolução indica APRENDIZADO DA CAMPANHA ou apenas variação sem direção?
-    - Correlacione mudanças visuais/narrativas com variações de CTR/CPC/CPE.
+- storytelling e metáforas visuais
+- regionalização e identificação com o público
+- humor, influenciadores ou elementos sonoros
 
-    **4. ROI CRIATIVO (o que cada elemento visual gera de retorno):**
-    - Se CPE caiu, qual elemento criativo provavelmente causou isso? (CTA mais claro, cor mais chamativa, mensagem mais direta)
-    - Se CPC subiu, o criativo pode estar gerando curiosidade sem entregar a promessa (click-bait negativo)?
-    - Calcule o "custo-benefício criativo": quanto cada peça está custando para engajar vs. converter.
+Extraia inteligência: por que esses elementos ressoam com o público-alvo e como isso se traduz em vantagem competitiva para o negócio.
 
-    **5. PONTOS POSITIVOS DOS CRIATIVOS:**
-    - Elementos visuais/narrativos que demonstram maturidade criativa
-    - Diferenciação competitiva identificada
-    - Alinhamento com tendências de consumo de conteúdo
+---
 
-    **6. PONTOS DE MELHORIA (com recomendação acionável):**
-    - Oportunidades de otimização visual (cores, composição, CTA)
-    - Gaps de formato (falta de vídeo curto, carrossel, etc.)
-    - Testes A/B sugeridos com base na análise
+2. ESTRATÉGIA DE CONTEÚDO
+Analise como os criativos se encaixam na estratégia de negócio do cliente:
 
-    **7. RED FLAGS CRIATIVAS:**
-    - Fadiga de criativo (mesmo conceito por muito tempo sem renovação)
-    - Desalinhamento entre promessa do criativo e landing page
-    - Excesso de dependência de um formato/narrativa
+- geração de awareness e construção de marca
+- estímulo ao engajamento e criação de comunidade
+- geração de tráfego qualificado e demanda
+- construção de autoridade no segmento
 
-    ### FORMATO:
-    Texto analítico e consultivo. Estruture em: Narrativa e Posicionamento > Psicologia do Público > Evolução Criativa > ROI Criativo > Pontos Positivos > Pontos de Melhoria > Red Flags > Pautas para Slides.
-    Se faltar criativos: "[Inserir miniatura do criativo com maior engajamento para análise visual]"
+Traduza para o cliente como cada formato contribui para seus objetivos de negócio.
+
+---
+
+3. RELAÇÃO COM PERFORMANCE (INTELIGÊNCIA DE ROI)
+Correlacione CPE e CPC com a qualidade dos criativos para demonstrar ao cliente o retorno do investimento criativo.
+
+Extraia insights de negócio como:
+
+- quais elementos criativos reduziram custos de aquisição
+- quais formatos geraram maior eficiência por real investido
+- como a estratégia criativa está protegendo o cliente da inflação de mídia
+
+---
+
+4. FORMATOS E DISTRIBUIÇÃO
+Analise a performance por plataforma (Reels, TikTok, YouTube, feed) e extraia inteligência sobre onde o público do cliente está mais receptivo.
+
+Insights esperados:
+
+- quais plataformas geram maior retorno para o perfil de público do cliente
+- quais formatos indicam tendências de comportamento do consumidor
+- oportunidades de redistribuição baseadas em performance
+
+---
+
+FORMATO DA RESPOSTA
+
+PARTE 1 — INTELIGÊNCIA CRIATIVA
+Escreva um texto analítico e consultivo, focado em inteligência de negócio extraída da performance criativa.
+
+O texto deve ter tom de devolutiva estratégica para o cliente:
+consultivo, orientado a decisão e sem repetições.
+
+---
+
+PARTE 2 — SUGESTÃO DE PAUTAS PARA OS SLIDES
+
+Com base na inteligência extraída, proponha a estrutura ideal para slides de apresentação ao cliente, priorizando os insights de maior valor para o negócio.
+
+Exemplo de estrutura:
+
+Slide 1 — Contexto criativo e posicionamento da campanha
+Slide 2 — Principais criativos e inteligência de engajamento
+Slide 3 — ROI criativo: relação entre conceito e eficiência
+Slide 4 — Insights de mercado e recomendações estratégicas
+
+Se faltarem dados de criativos, indicar placeholder:
+
+"[Inserir miniatura do criativo com maior engajamento para análise visual]"
     """
+
+    
     return gerar_texto(prompt, modelo_escolhido)
 
+#MIDIAS PAGAS 
+#USAR O GOOGLE TRENDS PARA Volume de buscas
+#COLOCAR REGIONALIZAÇÃR
 
 def gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o VP de Mídia e Performance da Macfor — sua análise transforma dados de investimento em INTELIGÊNCIA DE ALOCAÇÃO ESTRATÉGICA.
-    O cliente (Syngenta) precisa entender não apenas "quanto gastou e quanto rendeu", mas O QUE CADA CANAL REVELA sobre o mercado, o público e as oportunidades de crescimento.
+    Você é um Diretor de Mídia e Inteligência de Mercado focado em performance e branding para o setor agro.
+    Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
+    Com base na análise de criativos e nos dados de investimento, extraia inteligência de negócio para a seção de 'MÍDIAS PAGAS' — o cliente precisa entender não apenas os números, mas o que eles revelam sobre o mercado, a eficiência da estratégia e as oportunidades de crescimento.
 
-    **ANÁLISE DE CRIATIVOS (contexto acumulado):**
+    DIRETRIZES DE INTELIGÊNCIA DE MERCADO:
+    1. EFICIÊNCIA E ROI: Demonstre ao cliente se cada real investido está rendendo mais ou menos resultado. Correlacione crescimento de métricas vs. investimento para revelar ganhos de eficiência.
+    2. INTELIGÊNCIA DE CANAL: Analise o papel estratégico de cada ecossistema (YouTube/TikTok para visibilidade, Google Ads/PMax para conversão) e o que a performance de cada canal revela sobre o comportamento do público-alvo do cliente.
+    3. POSICIONAMENTO COMPETITIVO: Demonstre como a distribuição de mídia está posicionando a marca do cliente em relação à concorrência.
+
+
+    **Análise de Criativos Anterior:**
     {analise_criativos}
+    
+    **Dados de Investimento (Período Atual):**
+    - Social (FB/IG): R$ {dados_investimentos.get('fb_atual', 0) + dados_investimentos.get('ig_atual', 0):,.2f}
+    - TikTok: R$ {dados_investimentos.get('tt_atual', 0):,.2f}
+    - Google Ads (Search/PMax): R$ {dados_investimentos.get('google_atual', 0) + dados_investimentos.get('pmax_atual', 0):,.2f}
+    - YouTube: R$ {dados_investimentos.get('yt_atual', 0):,.2f}
+    
+    **Métricas de Eficiência:**
+    - CPM: R$ {dados_custos.get('cpm_atual', 0):.2f} | CPC: R$ {dados_custos.get('cpc_atual', 0):.2f} | CPE: R$ {dados_custos.get('cpe_atual', 0):.2f}
 
-    **PAINEL COMPLETO DE INVESTIMENTOS:**
-    | Canal | Atual | Var. MoM | Var. YoY |
-    |-------|-------|----------|----------|
-    | Facebook | R$ {dados_investimentos.get('fb_atual', 0):,.2f} | {dados_investimentos.get('var_fb_mes', 0):+.1f}% | {dados_investimentos.get('var_fb_ano', 0):+.1f}% |
-    | Instagram | R$ {dados_investimentos.get('ig_atual', 0):,.2f} | {dados_investimentos.get('var_ig_mes', 0):+.1f}% | {dados_investimentos.get('var_ig_ano', 0):+.1f}% |
-    | TikTok | R$ {dados_investimentos.get('tt_atual', 0):,.2f} | {dados_investimentos.get('var_tt_mes', 0):+.1f}% | {dados_investimentos.get('var_tt_ano', 0):+.1f}% |
-    | Google Ads | R$ {dados_investimentos.get('google_atual', 0):,.2f} | {dados_investimentos.get('var_google_mes', 0):+.1f}% | {dados_investimentos.get('var_google_ano', 0):+.1f}% |
-    | YouTube | R$ {dados_investimentos.get('yt_atual', 0):,.2f} | — | — |
-    | PMax | R$ {dados_investimentos.get('pmax_atual', 0):,.2f} | — | — |
-    | **TOTAL** | **R$ {dados_investimentos.get('total_atual', 0):,.2f}** | {dados_investimentos.get('var_total_mes', 0):+.1f}% | {dados_investimentos.get('var_total_ano', 0):+.1f}% |
+    ESTRUTURA DA RESPOSTA:
+    - Panorama de Eficiência e ROI (Conectar investimento vs. resultados de negócio).
+    - Inteligência por Ecossistema (Meta, Google, TikTok — o que cada canal revela sobre o mercado).
+    - Estratégia de Geolocalização e Formatos (Push, Programática, etc).
+    - INSIGHTS DE INTELIGÊNCIA DE MERCADO (tendências, oportunidades e riscos identificados).
 
-    **PAINEL DE EFICIÊNCIA:**
-    | Indicador | Valor | Var. MoM | Var. YoY |
-    |-----------|-------|----------|----------|
-    | CPM | R$ {dados_custos.get('cpm_atual', 0):.2f} | {dados_custos.get('var_cpm_mes', 0):+.1f}% | {dados_custos.get('var_cpm_ano', 0):+.1f}% |
-    | CPC | R$ {dados_custos.get('cpc_atual', 0):.2f} | {dados_custos.get('var_cpc_mes', 0):+.1f}% | {dados_custos.get('var_cpc_ano', 0):+.1f}% |
-    | CPE | R$ {dados_custos.get('cpe_atual', 0):.2f} | {dados_custos.get('var_cpe_mes', 0):+.1f}% | {dados_custos.get('var_cpe_ano', 0):+.1f}% |
-    | CPV | R$ {dados_custos.get('cpv_atual', 0):.2f} | {dados_custos.get('var_cpv_mes', 0):+.1f}% | {dados_custos.get('var_cpv_ano', 0):+.1f}% |
 
-    ### FRAMEWORK DE INTELIGÊNCIA DE MÍDIA (6 DIMENSÕES):
+    ### FORMATO DA RESPOSTA ESPERADA
 
-    **1. EFICIÊNCIA DE CAPITAL (ROI por Canal):**
-    - Para cada canal com investimento > 0, calcule a relação investimento/resultado implícita.
-    - Identifique: qual canal está gerando mais resultado por real investido?
-    - Se o investimento total caiu mas os resultados se mantiveram: destaque como GANHO DE PRODUTIVIDADE OPERACIONAL.
-    - Compare CPM/CPC atuais com benchmarks agro (CPM agro: R$15-30, CPC agro: R$1.50-3.00).
+    **PARTE 1: INTELIGÊNCIA DE MÍDIA PAGA**
 
-    **2. INTELIGÊNCIA POR ECOSSISTEMA:**
-    - **Meta (FB+IG):** Motor de alcance e engajamento. O que a performance revela sobre a audiência da Syngenta neste ecossistema? Há sinais de saturação ou crescimento?
-    - **Google Ads + PMax:** Motor de intenção e conversão. O search indica demanda ativa do mercado? PMax está aprendendo ou ainda em fase de otimização?
-    - **TikTok:** Canal emergente para agro. O que a performance indica sobre a penetração da Syngenta em audiências mais jovens/digitais?
-    - **YouTube:** Construção de autoridade via vídeo longo. Qual o papel estratégico no funil?
+    Escreva um texto analítico e consultivo para a seção **MÍDIAS PAGAS** do relatório executivo.
+    O foco é inteligência de negócio: o que os dados revelam sobre o mercado, o público e as oportunidades para o cliente.
+    Não repita informações e mantenha objetividade, mesmo detalhando a análise.
 
-    **3. ANÁLISE DE MIX DE MÍDIA:**
-    - A distribuição atual entre canais é ótima? Há canais sobre-investidos ou sub-investidos?
-    - Baseado nos resultados: qual seria a redistribuição ideal para maximizar ROI?
-    - Considere o papel de cada canal no funil: awareness (TikTok/YT) > consideração (Meta) > conversão (Google).
+    -----------------------------------------------------
 
-    **4. DINÂMICA DE CUSTOS E COMPETIÇÃO:**
-    - CPM subindo = mais concorrentes disputando a mesma audiência (pressão de leilão).
-    - CPC subindo sem aumento de CPM = criativo menos relevante (Quality Score caindo).
-    - CPC caindo = criativo mais relevante OU menos concorrência OU melhor segmentação.
-    - Interprete cada movimento de custo como SINAL DE MERCADO para o cliente.
+    **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
 
-    **5. PONTOS POSITIVOS:**
-    - Canais com melhor relação custo-efetividade
-    - Ganhos de eficiência identificados (efeito tesoura, redução de custos)
-    - Estratégias de alocação que estão funcionando
+    Com base na inteligência extraída acima, defina o que **DEVE constar em cada slide da apresentação ao cliente**, priorizando insights de valor para o negócio.
 
-    **6. RED FLAGS E PONTOS DE MELHORIA:**
-    - Canais com custo crescente sem retorno proporcional
-    - Concentração excessiva de investimento em um único canal (risco de dependência)
-    - Oportunidades de teste em canais/formatos subutilizados
-    - Gaps no funil que precisam de investimento incremental
+    Estruture os slides de forma clara e estratégica.
 
-    ### FORMATO:
-    Texto analítico de alto nível. Estruture em: Eficiência de Capital > Inteligência por Ecossistema > Mix de Mídia > Dinâmica de Custos > Pontos Positivos > Red Flags > Pautas para Slides.
+    Exemplo de estrutura:
+
+    Slide 1 – Panorama de Mídia Paga e ROI
+    - inteligência de eficiência: retorno por real investido
+    - destaque de ganhos estratégicos do período
+    - principais descobertas de mercado
+
+    Slide 2 – Inteligência por Canal
+    - o que a performance de cada canal revela sobre o público do cliente
+    - insights de redistribuição de investimento
+
+    Slide 3 – Eficiência de Custos e Competitividade
+    - análise de CPM, CPC e CPE vs. benchmarks de mercado
+    - interpretação do posicionamento competitivo
+
+    Slide 4 – Insights de Mercado
+    - tendências identificadas no comportamento do público
+    - oportunidades e riscos para o próximo período
+
+    Slide 5 – Recomendações Estratégicas
+    - otimizações de mídia baseadas em inteligência de dados
+    - ajustes de investimento orientados por ROI
+    - próximos testes de canais ou formatos
+
+    Se dados ou exemplos de criativos não estiverem disponíveis, indique com placeholder.
     """
+    
     return gerar_texto(prompt, modelo_escolhido)
 
 def gerar_analise_seo(dados_seo, analise_midias_pagas, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o Head de Inteligência de Conteúdo e SEO da Macfor.
-    Esta seção traduz dados de tráfego orgânico em INTELIGÊNCIA DE MERCADO ESTRATÉGICA — o SEO revela o que o mercado BUSCA ATIVAMENTE, e isso é ouro para a tomada de decisão do cliente.
+    Você é um especialista em inteligência de conteúdo e SEO. Este documento é uma devolutiva estratégica para o cliente que contratou nosso serviço de marketing digital.
+    Com base na análise de mídias pagas e nos dados de SEO abaixo, extraia inteligência de mercado sobre o posicionamento orgânico do cliente.
+    O cliente precisa entender como o conteúdo e o SEO estão construindo ativos digitais de longo prazo para o negócio — diferente da mídia paga, o orgânico representa valor acumulado e autoridade de marca.
 
-    **ANÁLISE DE MÍDIAS PAGAS (contexto acumulado):**
+    **Análise de Mídias Pagas:**
     {analise_midias_pagas}
 
-    **PAINEL COMPLETO SEO + CONTENT:**
-    | Métrica | Atual | Mês Passado | Var. MoM |
-    |---------|-------|-------------|----------|
-    | Visualizações (Total) | {dados_seo.get('vis_total_atual', 0):,} | {dados_seo.get('vis_total_mes', 0):,} | {dados_seo.get('var_vis_total_mes', 0):+.1f}% |
-    | Sessões (Total) | {dados_seo.get('sess_total_atual', 0):,} | {dados_seo.get('sess_total_mes', 0):,} | — |
-    | Usuários (Total) | {dados_seo.get('user_total_atual', 0):,} | {dados_seo.get('user_total_mes', 0):,} | — |
-    | Visualizações Orgânicas | {dados_seo.get('vis_org_atual', 0):,} | {dados_seo.get('vis_org_mes', 0):,} | {dados_seo.get('var_vis_org_mes', 0):+.1f}% |
-    | Sessões Orgânicas | {dados_seo.get('sess_org_atual', 0):,} | {dados_seo.get('sess_org_mes', 0):,} | {dados_seo.get('var_sess_org_mes', 0):+.1f}% |
-    | Usuários Orgânicos | {dados_seo.get('user_org_atual', 0):,} | {dados_seo.get('user_org_mes', 0):,} | — |
+    **Métricas SEO (Atual | Mês Passado):**
+    - Visualizações: {dados_seo.get('seo_visualizacoes_atual', 0)} | {dados_seo.get('seo_visualizacoes_mes_passado', 0)}
+    - Sessões: {dados_seo.get('seo_sessoes_atual', 0)} | {dados_seo.get('seo_sessoes_mes_passado', 0)}
+    - Usuários: {dados_seo.get('seo_usuarios_atual', 0)} | {dados_seo.get('seo_usuarios_mes_passado', 0)}
+    - Visualizações Orgânicas: {dados_seo.get('seo_visualizacoes_org_atual', 0)} | {dados_seo.get('seo_visualizacoes_org_mes_passado', 0)}
+    - Sessões Orgânicas: {dados_seo.get('seo_sessoes_org_atual', 0)} | {dados_seo.get('seo_sessoes_org_mes_passado', 0)}
+    - Usuários Orgânicos: {dados_seo.get('seo_usuarios_org_atual', 0)} | {dados_seo.get('seo_usuarios_org_mes_passado', 0)}
 
-    **TOP KEYWORDS DO MÊS:**
-    {dados_seo.get('top_keywords', 'Nenhuma keyword fornecida')}
+    **Top 10 Palavras-chave do Mês:**
+    {dados_metrica_performance.get('top_keywords', 'Nenhuma keyword fornecida')}
 
-    ### FRAMEWORK DE INTELIGÊNCIA SEO (6 DIMENSÕES):
+    ### DIRETRIZES DE INTELIGÊNCIA DE CONTEÚDO:
+    - Analise as keywords como indicadores de demanda de mercado: o que o público do cliente está buscando revela intenções de compra e interesse.
+    - Correlacione tráfego orgânico vs. pago para demonstrar ao cliente a construção de independência de mídia.
+    - Identifique oportunidades de conteúdo baseadas em gaps de keyword e tendências de busca.
+    - Demonstre o valor acumulado do SEO como ativo estratégico de longo prazo para o negócio.
 
-    **1. DEMANDA DE MERCADO (o que as buscas revelam):**
-    - As keywords indicam que tipo de demanda? (informacional: pesquisando; transacional: comprando; navegacional: já conhece a marca)
-    - Quais keywords revelam INTENÇÃO DE COMPRA vs. apenas curiosidade?
-    - Há keywords de concorrentes aparecendo? (oportunidade de interceptação)
-
-    **2. INDEPENDÊNCIA DE MÍDIA (orgânico vs. pago):**
-    - Calcule a proporção orgânico/total: quanto do tráfego é "gratuito" vs. comprado?
-    - Se o orgânico está crescendo: a Syngenta está construindo um ATIVO DIGITAL de longo prazo.
-    - Se o orgânico está caindo: dependência de mídia paga está aumentando (risco estratégico).
-    - Meta ideal para agro: 30-40% orgânico / 60-70% pago.
-
-    **3. AUTORIDADE DE MARCA:**
-    - As keywords de marca (Syngenta, produtos Syngenta) estão crescendo ou caindo?
-    - Keywords de marca crescendo = awareness gerando efeito de busca (mídia paga alimentando orgânico).
-    - Keywords genéricas do setor: a Syngenta está aparecendo para termos genéricos? (ex: "defensivos agrícolas", "fungicida soja")
-
-    **4. ANÁLISE DE FUNIL DE CONTEÚDO:**
-    - Visualizações altas mas sessões baixas = conteúdo sendo visto mas não gerando interesse profundo.
-    - Sessões crescendo mais que visualizações = conteúdo está engajando (boa retenção).
-    - Usuários únicos crescendo = alcance orgânico expandindo.
-
-    **5. PONTOS POSITIVOS:**
-    - Keywords que estão ganhando posição
-    - Crescimento de tráfego orgânico (economia de mídia)
-    - Conteúdos que estão gerando autoridade
-
-    **6. RED FLAGS E OPORTUNIDADES:**
-    - Keywords perdendo posição (risco de perder território orgânico)
-    - Tráfego orgânico caindo (sinal de alerta SEO)
-    - Gaps de conteúdo: o que o público busca e a Syngenta ainda não responde?
-    - Oportunidades de content marketing baseadas em tendências de busca do agro
-
-    ### FORMATO:
-    Texto analítico e consultivo. Estruture em: Demanda de Mercado > Independência de Mídia > Autoridade de Marca > Funil de Conteúdo > Pontos Positivos > Red Flags e Oportunidades > Pautas para Slides.
+    ### FORMATO DA RESPOSTA ESPERADA
+    **PARTE 1: INTELIGÊNCIA DE CONTEÚDO E SEO**
+    Escreva um texto analítico e consultivo para a seção **CONTENT + SEO** do relatório executivo.
+    Foque em inteligência de mercado: o que os dados de busca e conteúdo revelam sobre o comportamento do consumidor e as oportunidades para o negócio do cliente.
+    Não repita informações e mantenha objetividade, mesmo detalhando a análise.
+ -----------------------------------------------------
+    **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
+    Com base na inteligência extraída acima, defina o que **DEVE constar em cada slide da apresentação ao cliente**, priorizando insights de valor para o negócio.
     """
     return gerar_texto(prompt, modelo_escolhido)
 
-def gerar_diagnostico_eficiencia(dados_metrica_performance, dados_investimentos, dados_custos, modelo_escolhido="Gemini"):
-    """Nova seção: Diagnóstico de Eficiência Operacional — análise profunda do ROI."""
+def gerar_proximos_passos(dados_metrica_performance, analise_seo, modelo_escolhido="Gemini"):
     prompt = f"""
-    Você é o CFO Digital da Macfor — sua missão é traduzir dados de marketing em LINGUAGEM DE RETORNO SOBRE INVESTIMENTO que um Diretor Financeiro entenderia.
-    Esta seção é exclusiva sobre EFICIÊNCIA: cada real investido está rendendo mais ou menos resultado?
+    Você é um consultor estratégico de inteligência de negócio. Este documento é uma devolutiva para o cliente que contratou nosso serviço de marketing digital.
+    Com base em toda a inteligência acumulada nas seções anteriores, sintetize os PRÓXIMOS PASSOS E APRENDIZADOS.
+    Esta seção é onde o cliente encontra o maior valor da devolutiva: recomendações concretas baseadas em inteligência de mercado, não apenas em dados.
 
-    **DADOS FINANCEIROS:**
-    | Indicador | Atual | Var. MoM | Var. YoY |
-    |-----------|-------|----------|----------|
-    | Investimento Total | R$ {dados_investimentos.get('total_atual', 0):,.2f} | {dados_investimentos.get('var_total_mes', 0):+.1f}% | {dados_investimentos.get('var_total_ano', 0):+.1f}% |
-    | CPC | R$ {dados_custos.get('cpc_atual', 0):.2f} | {dados_custos.get('var_cpc_mes', 0):+.1f}% | {dados_custos.get('var_cpc_ano', 0):+.1f}% |
-    | CPM | R$ {dados_custos.get('cpm_atual', 0):.2f} | {dados_custos.get('var_cpm_mes', 0):+.1f}% | {dados_custos.get('var_cpm_ano', 0):+.1f}% |
-    | CPE | R$ {dados_custos.get('cpe_atual', 0):.2f} | {dados_custos.get('var_cpe_mes', 0):+.1f}% | {dados_custos.get('var_cpe_ano', 0):+.1f}% |
-    | CPV | R$ {dados_custos.get('cpv_atual', 0):.2f} | {dados_custos.get('var_cpv_mes', 0):+.1f}% | {dados_custos.get('var_cpv_ano', 0):+.1f}% |
-
-    **RESULTADOS:**
-    | Métrica | Atual | Var. MoM | Var. YoY |
-    |---------|-------|----------|----------|
-    | Cliques | {dados_metrica_performance.get('cli_atual', 0):,} | {dados_metrica_performance.get('var_cli_mes', 0):+.1f}% | {dados_metrica_performance.get('var_cli_ano', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('eng_atual', 0):,} | {dados_metrica_performance.get('var_eng_mes', 0):+.1f}% | {dados_metrica_performance.get('var_eng_ano', 0):+.1f}% |
-    | Sessões | {dados_metrica_performance.get('sess_atual', 0):,} | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-    | Alcance | {dados_metrica_performance.get('reach_atual', 0):,} | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('imp_atual', 0):,} | {dados_metrica_performance.get('var_imp_mes', 0):+.1f}% | {dados_metrica_performance.get('var_imp_ano', 0):+.1f}% |
-
-    ### ANÁLISE OBRIGATÓRIA:
-
-    **1. ÍNDICE DE PRODUTIVIDADE DIGITAL (IPD):**
-    Compare a variação do investimento com a variação dos resultados. Se o investimento caiu X% mas resultados caíram apenas Y% (Y < X), calcule o ganho de produtividade: "com Z% menos investimento, entregamos apenas W% menos resultado — ganho líquido de produtividade de P%."
-    Se resultados SUBIRAM com investimento menor: EFEITO TESOURA confirmado. Quantifique.
-
-    **2. CUSTO POR RESULTADO UNITÁRIO:**
-    - Custo por clique, custo por engajamento, custo por sessão, custo por mil impressões.
-    - Compare cada um com o mês passado e o ano passado.
-    - Classifique: OTIMIZANDO (custo caindo), ESTÁVEL, ou INFLACIONANDO (custo subindo).
-
-    **3. EFICIÊNCIA DE FUNIL:**
-    - Taxa de conversão implícita: Impressões → Cliques (CTR), Cliques → Sessões (taxa de aterrissagem).
-    - Onde está o gargalo? Onde está a eficiência?
-
-    **4. BENCHMARKS DO SETOR AGRO:**
-    - Compare métricas com benchmarks: CTR agro (0.8-1.5%), CPC agro (R$1.50-3.00), CPM agro (R$15-30).
-    - Posicione a Syngenta: ACIMA do mercado, NA MÉDIA, ou ABAIXO.
-
-    **5. SCORE DE SAÚDE FINANCEIRA DIGITAL:**
-    Atribua um score de 1 a 10 para a eficiência da operação digital, justificando cada ponto.
-
-    ### FORMATO:
-    Texto analítico com foco financeiro. Estruture em: IPD > Custo Unitário > Funil > Benchmarks > Score > Recomendações de Otimização de Budget.
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-def gerar_red_flags(dados_metrica_performance, dados_custos, dados_investimentos, contexto_atual, modelo_escolhido="Gemini"):
-    """Nova seção: Red Flags & Pontos de Atenção — sinais de alerta que exigem ação."""
-    prompt = f"""
-    Você é o Risk Analyst da Macfor — sua missão é identificar TODOS os sinais de alerta nos dados que exigem atenção imediata do cliente.
-    Esta seção é o "sistema de alarme precoce" do relatório: o cliente precisa saber onde há risco ANTES que vire problema.
-
-    **CONTEXTO ACUMULADO:**
-    {contexto_atual}
-
-    **DADOS DE PERFORMANCE:**
-    | Métrica | Var. MoM | Var. YoY |
-    |---------|----------|----------|
-    | Investimento | {dados_metrica_performance.get('var_invest_mes', 0):+.1f}% | {dados_metrica_performance.get('var_invest_ano', 0):+.1f}% |
-    | Sessões | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-    | Alcance | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Impressões | {dados_metrica_performance.get('var_imp_mes', 0):+.1f}% | {dados_metrica_performance.get('var_imp_ano', 0):+.1f}% |
-    | Cliques | {dados_metrica_performance.get('var_cli_mes', 0):+.1f}% | {dados_metrica_performance.get('var_cli_ano', 0):+.1f}% |
-    | Engajamentos | {dados_metrica_performance.get('var_eng_mes', 0):+.1f}% | {dados_metrica_performance.get('var_eng_ano', 0):+.1f}% |
-    | CTR | {dados_metrica_performance.get('var_ctr_mes', 0):+.1f}% | {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}% |
-
-    **DADOS DE CUSTOS:**
-    | Custo | Var. MoM | Var. YoY |
-    |-------|----------|----------|
-    | CPC | {dados_custos.get('var_cpc_mes', 0):+.1f}% | {dados_custos.get('var_cpc_ano', 0):+.1f}% |
-    | CPM | {dados_custos.get('var_cpm_mes', 0):+.1f}% | {dados_custos.get('var_cpm_ano', 0):+.1f}% |
-    | CPE | {dados_custos.get('var_cpe_mes', 0):+.1f}% | {dados_custos.get('var_cpe_ano', 0):+.1f}% |
-    | CPV | {dados_custos.get('var_cpv_mes', 0):+.1f}% | {dados_custos.get('var_cpv_ano', 0):+.1f}% |
-
-    ### FRAMEWORK DE DETECÇÃO DE RED FLAGS:
-
-    Para cada red flag, siga a estrutura:
-    **SINAL** → **CAUSA PROVÁVEL** → **RISCO SE NÃO AGIR** → **AÇÃO RECOMENDADA** → **URGÊNCIA (Alta/Média/Baixa)**
-
-    **CATEGORIAS DE RED FLAGS A INVESTIGAR:**
-
-    1. **INFLAÇÃO DE CUSTOS:** CPC/CPM/CPE subindo mais de 10% (MoM ou YoY). Causa: pressão competitiva, fadiga de criativo, ou queda de relevância.
-
-    2. **QUEDA DE RESULTADOS:** Métricas-chave caindo mais de 15%. Causa: sazonalidade, saturação de audiência, ou mudança algorítmica.
-
-    3. **DESCOLAMENTO NEGATIVO:** Investimento subindo mas resultados caindo (oposto do Efeito Tesoura). Sinal de ineficiência crescente.
-
-    4. **CONCENTRAÇÃO DE RISCO:** Mais de 60% do investimento em um único canal. Se esse canal tiver problema (algoritmo, ban, crise), o impacto é desproporcional.
-
-    5. **FADIGA DE AUDIÊNCIA:** Alcance caindo + frequência subindo = mesma audiência sendo impactada repetidamente. Risco de rejeição de marca.
-
-    6. **GARGALO DE FUNIL:** Muitas impressões mas poucos cliques (CTR baixo), ou muitos cliques mas poucas sessões (problemas de landing page ou tracking).
-
-    7. **DEPENDÊNCIA DE PAGO:** Se o tráfego orgânico está estagnado ou caindo enquanto o pago cresce, há risco de dependência.
-
-    8. **SINAIS POSITIVOS MASCARANDO PROBLEMAS:** Exemplo: cliques subindo mas engajamento caindo pode indicar tráfego de baixa qualidade.
-
-    ### FORMATO:
-    Liste cada Red Flag identificada com: Severidade (ALTA/MÉDIA/BAIXA), Sinal nos Dados, Causa Provável, Risco de Inação, Ação Recomendada.
-    Se NÃO houver red flags: documente como "Operação Saudável — sem sinais de alerta significativos" e explique por quê.
-    Ao final, liste também SINAIS POSITIVOS que compensam os riscos (para dar equilíbrio ao relatório).
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-def gerar_mapa_oportunidades(dados_metrica_performance, dados_investimentos, dados_custos, dados_seo, analise_seo, modelo_escolhido="Gemini"):
-    """Nova seção: Mapa de Oportunidades — onde o cliente pode crescer."""
-    prompt = f"""
-    Você é o Chief Strategy Officer da Macfor — sua missão é identificar TODAS as oportunidades de crescimento que os dados revelam para a Syngenta.
-    Esta seção é o "mapa do tesouro" do relatório: onde estão as oportunidades inexploradas e como capturá-las.
-
-    **ANÁLISE SEO (contexto acumulado):**
+    **Análise de SEO:**
     {analise_seo}
 
-    **PANORAMA DE PERFORMANCE:**
-    | Métrica | Atual | Var. MoM | Var. YoY |
-    |---------|-------|----------|----------|
-    | Investimento | R$ {dados_investimentos.get('total_atual', 0):,.2f} | {dados_investimentos.get('var_total_mes', 0):+.1f}% | {dados_investimentos.get('var_total_ano', 0):+.1f}% |
-    | Alcance | {dados_metrica_performance.get('reach_atual', 0):,} | {dados_metrica_performance.get('var_reach_mes', 0):+.1f}% | {dados_metrica_performance.get('var_reach_ano', 0):+.1f}% |
-    | Sessões | {dados_metrica_performance.get('sess_atual', 0):,} | {dados_metrica_performance.get('var_sess_mes', 0):+.1f}% | {dados_metrica_performance.get('var_sess_ano', 0):+.1f}% |
-    | CTR | {dados_metrica_performance.get('ctr_atual', 0):.2f}% | {dados_metrica_performance.get('var_ctr_mes', 0):+.1f}% | {dados_metrica_performance.get('var_ctr_ano', 0):+.1f}% |
+    **Informações de Concorrentes:**
+    {dados_metrica_performance.get('info_concorrentes', 'Nenhuma informação')}
 
-    **DADOS ORGÂNICOS:**
-    - Tráfego Orgânico: {dados_seo.get('vis_org_atual', 0):,} visualizações
-    - Keywords: {dados_seo.get('top_keywords', 'Não informado')}
+    **Performance Geral:**
+    - Variação Visualizações (vs mês passado): {dados_metrica_performance.get('var_visualizacoes_mes', 0):.1f}%
+    - Variação Visualizações (vs ano passado): {dados_metrica_performance.get('var_visualizacoes_ano', 0):.1f}%
+    ### DIRETRIZES DE INTELIGÊNCIA ESTRATÉGICA
 
-    **EFICIÊNCIA:**
-    - CPC: R$ {dados_custos.get('cpc_atual', 0):.2f} | CPM: R$ {dados_custos.get('cpm_atual', 0):.2f}
+    Extraia inteligência de negócio considerando:
 
-    ### FRAMEWORK DE MAPEAMENTO DE OPORTUNIDADES:
+    - o que as tendências de crescimento/retração revelam sobre o mercado do cliente
+    - como o posicionamento competitivo deve evoluir nos próximos meses
+    - qual o equilíbrio ideal entre mídia paga e orgânico para maximizar ROI
+    - quais oportunidades de mercado foram identificadas e como capturá-las
+    - riscos de mercado que exigem ação preventiva
 
-    **1. OPORTUNIDADES DE CANAL:**
-    - Canais subutilizados: se TikTok tem investimento zero ou mínimo, há oportunidade de first-mover no agro.
-    - Canais com CPC baixo: indicam menor concorrência = oportunidade de dominar.
-    - YouTube para agro: produtor rural consome vídeo técnico — oportunidade de autoridade.
-    - PMax / Performance Max: aprendizado de máquina do Google pode revelar audiências inesperadas.
+    ### FORMATO DA RESPOSTA ESPERADA
+    **PARTE 1: INTELIGÊNCIA ESTRATÉGICA**
+    Escreva um texto analítico e consultivo para a seção **APRENDIZADOS E PRÓXIMOS PASSOS** do relatório executivo.
+    Deve haver 3 subseções:
+    INTELIGÊNCIA DO PERÍODO (o que os dados revelaram sobre o mercado e o negócio)
+    PRÓXIMOS MOVIMENTOS ESTRATÉGICOS (recomendações baseadas em inteligência de mercado)
+    PRÓXIMOS PASSOS OPERACIONAIS (ações concretas para capturar as oportunidades identificadas)
 
-    **2. OPORTUNIDADES DE AUDIÊNCIA:**
-    - Se o alcance está crescendo mas o engajamento não acompanha: há audiência disponível que não está sendo ativada.
-    - Segmentações testáveis: faixa etária, região, interesse em culturas específicas.
-    - Lookalike audiences dos melhores performers.
+    Não repita informações e mantenha objetividade, mesmo detalhando a análise.
+    --------------------------------------------------
+    **PARTE 2: SUGESTÃO DE PAUTAS PARA OS SLIDES**
+    Com base na inteligência extraída acima, defina o que **DEVE constar em cada slide da apresentação ao cliente**, priorizando recomendações de alto valor estratégico para o negócio.
 
-    **3. OPORTUNIDADES DE CONTEÚDO:**
-    - Gaps de keyword: o que o público busca e a Syngenta não tem conteúdo?
-    - Formatos emergentes: Reels, Shorts, carrosséis educativos, UGC (conteúdo de produtor).
-    - Content marketing técnico: guias de safra, calculadoras de ROI agrícola, webinars.
-
-    **4. OPORTUNIDADES DE EFICIÊNCIA:**
-    - Testes A/B prioritários baseados nos dados (CTA, cores, headlines, formatos).
-    - Otimizações de lance e orçamento baseadas em hora do dia / dia da semana.
-    - Retargeting: audiências que clicaram mas não converteram.
-
-    **5. OPORTUNIDADES SAZONAIS (AGRO):**
-    - Calendário safra: quais culturas/produtos devem ser priorizados nos próximos meses?
-    - Feiras e eventos do setor: oportunidades de campanha pré/durante/pós-evento.
-    - Entressafra: momento de construir awareness para a próxima safra.
-
-    **6. OPORTUNIDADES COMPETITIVAS:**
-    - Se concorrentes estão ausentes de algum canal, é janela de first-mover.
-    - Se custos de mídia estão caindo: momento de investir mais por menos.
-    - Se o tráfego orgânico está crescendo: escalar conteúdo para reduzir dependência de pago.
-
-    ### PARA CADA OPORTUNIDADE, ENTREGUE:
-    - **Descrição** da oportunidade
-    - **Potencial de impacto** (Alto/Médio/Baixo)
-    - **Investimento necessário** (tempo, budget, recursos)
-    - **Prazo de retorno** (curto: 1-3 meses / médio: 3-6 meses / longo: 6-12 meses)
-    - **Ação recomendada** específica
-
-    ### FORMATO:
-    Texto analítico e propositivo. Estruture em: Oportunidades de Canal > Audiência > Conteúdo > Eficiência > Sazonais > Competitivas.
-    Priorize as 3 oportunidades de maior impacto como "QUICK WINS" no início.
     """
     return gerar_texto(prompt, modelo_escolhido)
-
-def gerar_proximos_passos(dados_metrica_performance, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, modelo_escolhido="Gemini"):
-    prompt = f"""
-    Você é o CEO da Macfor entregando pessoalmente as recomendações finais ao board da Syngenta.
-    Esta seção é a SÍNTESE ESTRATÉGICA FINAL — ela condensa TODA a inteligência acumulada no relatório em recomendações concretas, priorizadas e acionáveis.
-    O cliente deve sair desta seção sabendo EXATAMENTE o que fazer, por que fazer e em que ordem.
-
-    **INTELIGÊNCIA ACUMULADA:**
-
-    **Análise SEO e Content:**
-    {analise_seo}
-
-    **Diagnóstico de Eficiência:**
-    {diagnostico_eficiencia}
-
-    **Red Flags Identificadas:**
-    {red_flags}
-
-    **Mapa de Oportunidades:**
-    {mapa_oportunidades}
-
-    **DADOS-CHAVE:**
-    - Investimento: R$ {dados_metrica_performance.get('spend_atual', 0):,.2f} (MoM: {dados_metrica_performance.get('var_invest_mes', 0):+.1f}%, YoY: {dados_metrica_performance.get('var_invest_ano', 0):+.1f}%)
-    - CTR: {dados_metrica_performance.get('ctr_atual', 0):.2f}%
-    - Concorrentes: {dados_metrica_performance.get('info_concorrentes', 'Não informado')}
-
-    ### FRAMEWORK DE PRÓXIMOS PASSOS (4 BLOCOS):
-
-    **BLOCO 1: INTELIGÊNCIA DO PERÍODO (O que aprendemos)**
-    - Síntese das 3-5 descobertas mais importantes de todo o relatório.
-    - O que esses dados revelam sobre o mercado agro digital como um todo?
-    - O que mudou na dinâmica competitiva?
-    - Quais hipóteses foram confirmadas e quais foram refutadas?
-
-    **BLOCO 2: AÇÕES IMEDIATAS (Próximos 30 dias)**
-    - Red flags que exigem correção urgente.
-    - Quick wins de otimização que podem gerar resultado rápido.
-    - Ajustes de budget/lance/segmentação baseados nos dados.
-    - Cada ação deve ter: O QUÊ fazer, POR QUÊ fazer, RESULTADO esperado.
-
-    **BLOCO 3: MOVIMENTOS ESTRATÉGICOS (Próximos 60-90 dias)**
-    - Oportunidades de canal e audiência a explorar.
-    - Testes estruturados a implementar (A/B de criativos, novos formatos, novas segmentações).
-    - Investimentos em conteúdo e SEO para reduzir dependência de pago.
-    - Preparação para próximas janelas sazonais do agro.
-
-    **BLOCO 4: VISÃO DE LONGO PRAZO (Próximos 6-12 meses)**
-    - Construção de ativos digitais (audiência proprietária, autoridade SEO, dados de público).
-    - Evolução do mix de mídia ideal para maximizar ROI.
-    - Posicionamento competitivo desejado e como chegar lá.
-    - KPIs de referência para acompanhamento (quais métricas monitorar e quais targets atingir).
-
-    ### FORMATO:
-    Texto executivo, direto, orientado a ação. Cada recomendação deve ser ESPECÍFICA, MENSURÁVEL e com PRAZO.
-    Tom: consultivo e propositivo — o cliente deve sentir que tem um parceiro estratégico, não apenas um fornecedor de métricas.
-    Ao final, sugira pautas para slides priorizando as recomendações de maior impacto.
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-
-def compilar_relatorio_cliente(contexto_atual, destaques, analise_criativos, analise_midias_pagas,
-                                analise_seo, proximos_passos, mapa_oportunidades, modelo_escolhido="Gemini"):
-    """Compila todas as análises em um relatório narrativo para apresentação ao cliente."""
-    prompt = f"""
-    Você é o Diretor de Contas da Macfor, responsável por REESCREVER toda a inteligência acumulada no relatório
-    em um documento PARA O CLIENTE (Syngenta).
-
-    **CONTEXTO CRÍTICO:** Somos uma agência de marketing digital CONTRATADA pela Syngenta. Este documento é a
-    nossa ENTREGA MENSAL — é assim que justificamos nosso fee, demonstramos valor e garantimos a renovação do contrato.
-
-    **DIFERENÇA FUNDAMENTAL vs. relatório interno:**
-    - NÃO exponha vulnerabilidades da nossa operação — apresente como aprendizados e otimizações.
-    - NÃO use linguagem de "estamos testando" — use "implementamos a estratégia X que gerou Y."
-    - CADA dado deve ser ENQUADRADO como valor entregue pela Macfor ao cliente.
-    - Red flags devem ser apresentadas como "oportunidades identificadas pela nossa equipe" e não como problemas.
-    - O tom é de PARCEIRO ESTRATÉGICO entregando resultado, não de fornecedor prestando contas.
-    - DEMONSTRE EXPERTISE: use benchmarks de mercado, referências do setor agro, frameworks estratégicos.
-    - O cliente deve sair da leitura pensando: "estou bem assessorado, a Macfor entende do meu negócio."
-
-    **INTELIGÊNCIA ACUMULADA (BASE PARA REESCRITA):**
-
-    **Contexto Atual:**
-    {contexto_atual}
-
-    **Destaques:**
-    {destaques}
-
-    **Análise de Criativos:**
-    {analise_criativos}
-
-    **Mídias Pagas:**
-    {analise_midias_pagas}
-
-    **SEO + Content:**
-    {analise_seo}
-
-    **Mapa de Oportunidades:**
-    {mapa_oportunidades}
-
-    **Próximos Passos:**
-    {proximos_passos}
-
-    ### ESTRUTURA OBRIGATÓRIA DO DOCUMENTO PARA O CLIENTE:
-
-    **1. SUMÁRIO EXECUTIVO (1 parágrafo)**
-    Síntese de alto nível: o que o período representou para a marca Syngenta no digital.
-    Tom: confiante, estratégico, orientado a resultado.
-
-    **2. PANORAMA DO PERÍODO**
-    Contextualização do cenário de mercado e como a Syngenta se posicionou.
-    Foque no que FOI CONQUISTADO, não no que faltou.
-
-    **3. RESULTADOS E CONQUISTAS**
-    Apresente os dados como CONQUISTAS. Use framing positivo:
-    - "Alcançamos X impressões" em vez de "as impressões foram X"
-    - "Otimizamos o CPC em X%" em vez de "o CPC variou X%"
-    - Se algo caiu: "redirecionamos investimento para canais de maior eficiência, resultando em..."
-
-    **4. INTELIGÊNCIA DE MERCADO ENTREGUE**
-    Posicione a Macfor como consultoria: mostre insights que SÓ uma equipe especializada poderia ter extraído.
-    Use frases como: "Nossa análise identificou que...", "A inteligência competitiva revela..."
-
-    **5. ESTRATÉGIA CRIATIVA E PERFORMANCE**
-    Demonstre a relação causa-efeito entre as decisões criativas e os resultados.
-    O cliente precisa ver que cada peça foi pensada estrategicamente.
-
-    **6. VISÃO DE MÍDIA E EFICIÊNCIA DE INVESTIMENTO**
-    Demonstre que cada real do cliente foi investido com inteligência.
-    Destaque ganhos de eficiência como valor direto entregue pela Macfor.
-
-    **7. OPORTUNIDADES IDENTIFICADAS PARA O PRÓXIMO PERÍODO**
-    Apresente as oportunidades como "o que a Macfor está preparando para capitalizar."
-    Tom: proativo, antecipando movimentos de mercado.
-
-    **8. RECOMENDAÇÕES ESTRATÉGICAS**
-    Recomendações concretas enquadradas como "nossa recomendação baseada na inteligência acumulada."
-    Cada recomendação deve ter: ação, justificativa, resultado esperado.
-
-    ### FORMATO:
-    Texto elegante, profissional, com tom consultivo de alto nível.
-    Sem jargões internos de agência. Sem autocrítica. Sem incertezas.
-    O cliente deve sentir que tem o melhor parceiro digital do mercado.
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-
-def compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_midias_pagas,
-                          analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades,
-                          proximos_passos, tipo="cliente", modelo_escolhido="Gemini"):
-    """Gera guia de slides para apresentação (interno ou cliente)."""
-
-    if tipo == "cliente":
-        instrucao_tom = """
-        **TOM E ABORDAGEM (CLIENTE):**
-        - Cada slide deve DEMONSTRAR VALOR entregue pela Macfor.
-        - Enquadre TUDO como conquista, aprendizado ou oportunidade identificada.
-        - Red flags viram "oportunidades de otimização proativas".
-        - Use dados como prova de competência e resultado.
-        - O deck deve construir a narrativa: "investiu bem → resultados sólidos → próximos movimentos estratégicos."
-        - Visual sugerido: clean, corporativo, cores Macfor + Syngenta.
-        - O cliente deve sair da apresentação renovando o contrato mentalmente.
-        """
-        excluir = "NÃO inclua: red flags internas, autocríticas, dados de margem/fee, discussões de processo interno."
-    else:
-        instrucao_tom = """
-        **TOM E ABORDAGEM (INTERNO):**
-        - Seja 100% HONESTO sobre o que funcionou e o que não funcionou.
-        - Red flags devem ser destacadas com urgência e plano de ação.
-        - Inclua notas sobre: ajustes de processo, problemas de execução, aprendizados operacionais.
-        - Métricas de eficiência da equipe, tempo de entrega, qualidade de peças.
-        - Discussão aberta sobre o que mudar na estratégia.
-        - Análise de risco para renovação do contrato com o cliente.
-        """
-        excluir = "INCLUA: autocríticas, problemas de processo, riscos de churn do cliente, gaps de entrega."
-
-    prompt = f"""
-    Você é o Head de Planejamento Estratégico da Macfor. Crie um GUIA COMPLETO DE SLIDES para apresentação {"ao cliente Syngenta" if tipo == "cliente" else "interna da equipe Macfor"}.
-
-    {instrucao_tom}
-    {excluir}
-
-    **INTELIGÊNCIA ACUMULADA:**
-
-    **Contexto:** {contexto_atual}
-    **Destaques:** {destaques}
-    **Criativos:** {analise_criativos}
-    **Mídias Pagas:** {analise_midias_pagas}
-    **SEO:** {analise_seo}
-    **Diagnóstico de Eficiência:** {diagnostico_eficiencia}
-    **Red Flags:** {red_flags}
-    **Oportunidades:** {mapa_oportunidades}
-    **Próximos Passos:** {proximos_passos}
-
-    ### FORMATO OBRIGATÓRIO — PARA CADA SLIDE:
-
-    **Slide N — [Título do Slide]**
-    - **Objetivo:** O que este slide precisa comunicar
-    - **Conteúdo principal:** Bullet points com os dados/insights-chave
-    - **Visual sugerido:** Tipo de gráfico, tabela ou elemento visual recomendado
-    - **Texto de apoio:** Frase ou parágrafo que o apresentador deve falar
-    - **Dado-destaque:** O número ou insight que deve estar em evidência no slide
-
-    ### ESTRUTURA DE DECK {"PARA CLIENTE" if tipo == "cliente" else "INTERNO"}:
-
-    {"**Slide 1 — Capa** (Relatório Executivo | Syngenta | Mês/Ano | Macfor)" if tipo == "cliente" else "**Slide 1 — Capa** (Review Interno | Syngenta | Mês/Ano)"}
-    **Slide 2 — Sumário Executivo** (1 parágrafo + 3 métricas-destaque)
-    **Slide 3 — Panorama de Performance** (tabela comparativa MoM + YoY)
-    **Slide 4 — {"Conquistas do Período" if tipo == "cliente" else "Diagnóstico de Saúde da Operação"}**
-    **Slide 5 — {"Inteligência de Mercado" if tipo == "cliente" else "Red Flags e Pontos de Atenção"}**
-    **Slide 6 — Análise de Criativos** (com miniaturas sugeridas)
-    **Slide 7 — Performance de Mídias Pagas** (gráficos de investimento por canal + eficiência)
-    **Slide 8 — {"Eficiência do Investimento" if tipo == "cliente" else "Análise de ROI e Produtividade"}** {"(Efeito Tesoura se aplicável)" if tipo == "cliente" else ""}
-    **Slide 9 — SEO + Content** (orgânico vs pago + keywords)
-    **Slide 10 — {"Oportunidades Identificadas" if tipo == "cliente" else "Mapa de Oportunidades + Priorização"}**
-    **Slide 11 — Próximos Passos** (ações 30/60/90 dias)
-    {"**Slide 12 — Agradecimento + Contato Macfor**" if tipo == "cliente" else "**Slide 12 — Plano de Ação Interno + Responsáveis**"}
-
-    Detalhe CADA slide. Não pule nenhum. Cada slide deve ter conteúdo suficiente para ser produzido pelo time de design.
-    """
-    return gerar_texto(prompt, modelo_escolhido)
-
-
+    
 if st.button("🔄 Atualizar Dados (Syngenta)"):
     with st.spinner("Buscando dados históricos no BigQuery..."):
         res = fetch_bigquery_data()
@@ -2317,7 +1664,7 @@ if submitted:
     # Gerar relatório
     with st.spinner("Gerando relatório executivo... (isso pode levar alguns minutos)"):
         try:
-            # Gerar cada seção sequencialmente (pipeline de inteligência)
+            # Gerar cada seção sequencialmente
             analise_yoy = gerar_yoy_para_contexto(dados_metrica_performance, descricoes_imagens, modelo_escolhido)
             analise_concorrencia = gerar_analise_concorrencia(dados_metrica_performance, info_concorrentes, modelo_escolhido)
             contexto_atual = gerar_contexto_atual(dados_metrica_performance, dados_investimentos, dados_custos, descricoes_imagens, analise_yoy, analise_concorrencia, modelo_escolhido)
@@ -2325,19 +1672,11 @@ if submitted:
             analise_criativos = gerar_analise_criativos(dados_custos, descricoes_imagens, descricoes_imagens_mes_passado, destaques, modelo_escolhido)
             analise_midias_pagas = gerar_analise_midias_pagas(dados_investimentos, dados_custos, analise_criativos, modelo_escolhido)
             analise_seo = gerar_analise_seo(dados_seo, analise_midias_pagas, modelo_escolhido)
-            diagnostico_eficiencia = gerar_diagnostico_eficiencia(dados_metrica_performance, dados_investimentos, dados_custos, modelo_escolhido)
-            red_flags = gerar_red_flags(dados_metrica_performance, dados_custos, dados_investimentos, contexto_atual, modelo_escolhido)
-            mapa_oportunidades = gerar_mapa_oportunidades(dados_metrica_performance, dados_investimentos, dados_custos, dados_seo, analise_seo, modelo_escolhido)
-            proximos_passos = gerar_proximos_passos(dados_metrica_performance, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, modelo_escolhido)
-
-            # Compilar documentos derivados
-            relatorio_cliente = compilar_relatorio_cliente(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, proximos_passos, mapa_oportunidades, modelo_escolhido)
-            slides_cliente = compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, tipo="cliente", modelo_escolhido=modelo_escolhido)
-            slides_interno = compilar_guia_slides(contexto_atual, destaques, analise_criativos, analise_midias_pagas, analise_seo, diagnostico_eficiencia, red_flags, mapa_oportunidades, proximos_passos, tipo="interno", modelo_escolhido=modelo_escolhido)
-
+            proximos_passos = gerar_proximos_passos(dados_metrica_performance, analise_seo, modelo_escolhido)
+            
             # Armazenar resultados
             st.session_state.relatorio_gerado = True
-            st.session_state.dados_processados = dados_metrica_performance
+            st.session_state.dados_processados = dados_metrica_performance # Use a variável correta
             st.session_state.descricoes_imagens = descricoes_imagens
             st.session_state.descricoes_imagens_mes_passado = descricoes_imagens_mes_passado
             st.session_state.contexto_atual = contexto_atual
@@ -2345,13 +1684,7 @@ if submitted:
             st.session_state.analise_criativos = analise_criativos
             st.session_state.analise_midias_pagas = analise_midias_pagas
             st.session_state.analise_seo = analise_seo
-            st.session_state.diagnostico_eficiencia = diagnostico_eficiencia
-            st.session_state.red_flags = red_flags
-            st.session_state.mapa_oportunidades = mapa_oportunidades
             st.session_state.proximos_passos = proximos_passos
-            st.session_state.relatorio_cliente = relatorio_cliente
-            st.session_state.slides_cliente = slides_cliente
-            st.session_state.slides_interno = slides_interno
             
             st.rerun() # Força o refresh para mostrar o relatório
 
@@ -2362,234 +1695,49 @@ if submitted:
 if st.session_state.relatorio_gerado:
     st.markdown("---")
     st.header("📄 Relatório Executivo Gerado")
-
+    
     dados = st.session_state.dados_processados
-
-    # =====================================================================
-    # PAINEL DE CARDS — KPIs PRINCIPAIS
-    # =====================================================================
-    st.subheader("📊 Painel de Performance")
-
-    col1, col2, col3, col4 = st.columns(4)
+    
+    # Tabela de variações
+    st.subheader("📊 Comparativos de Performance")
+    
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Investimento", f"R$ {dados.get('spend_atual', 0):,.0f}",
-                  f"{dados.get('var_invest_mes', 0):+.1f}% MoM")
+        st.metric("Visualizações (vs Mês Passado)", 
+                 f"{dados.get('vis_atual', 0):,}", 
+                 f"{dados.get('var_vis_mes', 0):.1f}%")
     with col2:
-        st.metric("Cliques", f"{dados.get('cli_atual', 0):,}",
-                  f"{dados.get('var_cli_mes', 0):+.1f}% MoM")
+        st.metric("Impressões (vs Mês Passado)", 
+                 f"{dados.get('imp_atual', 0):,}", 
+                 f"{dados.get('var_imp_mes', 0):.1f}%")
     with col3:
-        st.metric("Impressões", f"{dados.get('imp_atual', 0):,}",
-                  f"{dados.get('var_imp_mes', 0):+.1f}% MoM")
-    with col4:
-        st.metric("CTR", f"{dados.get('ctr_atual', 0):.2f}%",
-                  f"{dados.get('var_ctr_mes', 0):+.1f}% MoM")
-
-    col1, col2, col3, col4 = st.columns(4)
+        st.metric("Cliques (vs Mês Passado)", 
+                 f"{dados.get('cli_atual', 0):,}", 
+                 f"{dados.get('var_cliques_mes', 0):.1f}%")
+    
+    col1, col2, col3 = st.columns(3)
     with col1:
-        st.metric("Alcance", f"{dados.get('reach_atual', 0):,}",
-                  f"{dados.get('var_reach_mes', 0):+.1f}% MoM")
+        st.metric("Visualizações (vs Ano Passado)", 
+                 f"{dados.get('vis_atual', 0):,}", 
+                 f"{dados.get('var_vis_ano', 0):.1f}%")
     with col2:
-        st.metric("Sessões", f"{dados.get('sess_atual', 0):,}",
-                  f"{dados.get('var_sess_mes', 0):+.1f}% MoM")
+        st.metric("Impressões (vs Ano Passado)", 
+                 f"{dados.get('imp_atual', 0):,}", 
+                 f"{dados.get('var_imp_ano', 0):.1f}%")
     with col3:
-        st.metric("Engajamentos", f"{dados.get('eng_atual', 0):,}",
-                  f"{dados.get('var_eng_mes', 0):+.1f}% MoM")
-    with col4:
-        st.metric("Video Thruplays", f"{dados.get('vtp_atual', 0):,}",
-                  f"{dados.get('var_vtp_mes', 0):+.1f}% MoM")
-
+        st.metric("Cliques (vs Ano Passado)", 
+                 f"{dados.get('cli_atual', 0):,}", 
+                 f"{dados.get('var_cli_ano', 0):.1f}%")
+    
     st.markdown("---")
-
-    # =====================================================================
-    # GRÁFICOS — Linha 1: Variações MoM vs YoY (Barras agrupadas)
-    # =====================================================================
-    st.subheader("📈 Variações MoM vs YoY")
-
-    metricas_nomes = ["Invest.", "Sessões", "Alcance", "Impressões", "Cliques", "Engajam.", "CTR"]
-    var_mom = [
-        dados.get('var_invest_mes', 0), dados.get('var_sess_mes', 0),
-        dados.get('var_reach_mes', 0), dados.get('var_imp_mes', 0),
-        dados.get('var_cli_mes', 0), dados.get('var_eng_mes', 0),
-        dados.get('var_ctr_mes', 0)
-    ]
-    var_yoy = [
-        dados.get('var_invest_ano', 0), dados.get('var_sess_ano', 0),
-        dados.get('var_reach_ano', 0), dados.get('var_imp_ano', 0),
-        dados.get('var_cli_ano', 0), dados.get('var_eng_ano', 0),
-        dados.get('var_ctr_ano', 0)
-    ]
-
-    fig_variacoes = go.Figure()
-    fig_variacoes.add_trace(go.Bar(
-        name='MoM (%)', x=metricas_nomes, y=var_mom,
-        marker_color=['#27AE60' if v >= 0 else '#E74C3C' for v in var_mom],
-        text=[f"{v:+.1f}%" for v in var_mom], textposition='outside',
-        textfont=dict(size=10)
-    ))
-    fig_variacoes.add_trace(go.Bar(
-        name='YoY (%)', x=metricas_nomes, y=var_yoy,
-        marker_color=['#2E86C1' if v >= 0 else '#E67E22' for v in var_yoy],
-        text=[f"{v:+.1f}%" for v in var_yoy], textposition='outside',
-        textfont=dict(size=10)
-    ))
-    fig_variacoes.update_layout(
-        barmode='group', height=400,
-        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-        font=dict(family='Calibri', size=12),
-        legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-        yaxis=dict(title='Variação (%)', zeroline=True, zerolinecolor='#BDC3C7', gridcolor='#EAECEE'),
-        xaxis=dict(title=''),
-        margin=dict(t=40, b=40)
-    )
-    st.plotly_chart(fig_variacoes, use_container_width=True)
-
-    # =====================================================================
-    # GRÁFICOS — Linha 2: Investimento por Canal (Pizza) + Custos (Radar)
-    # =====================================================================
-    col_g1, col_g2 = st.columns(2)
-
-    with col_g1:
-        st.markdown("**Distribuição de Investimento por Canal**")
-        canais = ['Facebook', 'Instagram', 'TikTok', 'Google Ads', 'YouTube', 'PMax']
-        valores_canais = [
-            st.session_state.get('fb_atual', 0), st.session_state.get('ig_atual', 0),
-            st.session_state.get('tt_atual', 0), st.session_state.get('google_atual', 0),
-            st.session_state.get('yt_atual', 0), st.session_state.get('pmax_atual', 0)
-        ]
-        # Filtrar canais com valor > 0
-        canais_filtrados = [c for c, v in zip(canais, valores_canais) if v > 0]
-        valores_filtrados = [v for v in valores_canais if v > 0]
-
-        if valores_filtrados:
-            fig_pizza = go.Figure(data=[go.Pie(
-                labels=canais_filtrados, values=valores_filtrados,
-                hole=0.45,
-                marker=dict(colors=['#3498DB', '#E91E63', '#000000', '#4CAF50', '#FF0000', '#FF9800']),
-                textinfo='label+percent', textposition='outside',
-                textfont=dict(size=11)
-            )])
-            fig_pizza.update_layout(
-                height=380, showlegend=False,
-                margin=dict(t=20, b=20, l=20, r=20),
-                annotations=[dict(text=f"R$ {sum(valores_filtrados):,.0f}", x=0.5, y=0.5,
-                                  font_size=14, font_color='#1B3A5C', showarrow=False)]
-            )
-            st.plotly_chart(fig_pizza, use_container_width=True)
-        else:
-            st.info("Nenhum investimento por canal informado.")
-
-    with col_g2:
-        st.markdown("**Indicadores de Custo (Atual vs Mês Passado)**")
-        custos_labels = ['CPC', 'CPM', 'CPE', 'CPV']
-        custos_atual = [
-            st.session_state.get('cpc_atual', 0), st.session_state.get('cpm_atual', 0),
-            st.session_state.get('cpe_atual', 0), st.session_state.get('cpv_atual', 0)
-        ]
-        custos_mes = [
-            st.session_state.get('cpc_mes', 0), st.session_state.get('cpm_mes', 0),
-            st.session_state.get('cpe_mes', 0), st.session_state.get('cpv_mes', 0)
-        ]
-
-        if any(v > 0 for v in custos_atual):
-            fig_custos = go.Figure()
-            fig_custos.add_trace(go.Bar(
-                name='Atual', x=custos_labels, y=custos_atual,
-                marker_color='#1B3A5C',
-                text=[f"R$ {v:.2f}" for v in custos_atual], textposition='outside'
-            ))
-            fig_custos.add_trace(go.Bar(
-                name='Mês Passado', x=custos_labels, y=custos_mes,
-                marker_color='#AEB6BF',
-                text=[f"R$ {v:.2f}" for v in custos_mes], textposition='outside'
-            ))
-            fig_custos.update_layout(
-                barmode='group', height=380,
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(family='Calibri', size=12),
-                legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-                yaxis=dict(title='R$', gridcolor='#EAECEE'),
-                margin=dict(t=40, b=20)
-            )
-            st.plotly_chart(fig_custos, use_container_width=True)
-        else:
-            st.info("Nenhum indicador de custo informado.")
-
-    # =====================================================================
-    # GRÁFICO — Efeito Tesoura (se aplicável)
-    # =====================================================================
-    var_inv_mom = dados.get('var_invest_mes', 0)
-    var_cli_mom = dados.get('var_cli_mes', 0)
-    var_eng_mom = dados.get('var_eng_mes', 0)
-    tesoura_detectada = (var_inv_mom < -5 and (var_cli_mom > 0 or var_eng_mom > 0))
-
-    if tesoura_detectada:
-        st.subheader("✂️ Efeito Tesoura Detectado")
-        st.caption("Investimento em queda com resultados em alta — sinal de ganho de produtividade digital.")
-
-        periodos = ['Mês Passado', 'Mês Atual']
-        inv_vals = [100, 100 + var_inv_mom]
-        cli_vals = [100, 100 + var_cli_mom]
-
-        fig_tesoura = go.Figure()
-        fig_tesoura.add_trace(go.Scatter(
-            x=periodos, y=inv_vals, name='Investimento',
-            line=dict(color='#E74C3C', width=3, dash='dash'),
-            mode='lines+markers+text',
-            text=[f"{inv_vals[0]:.0f}", f"{inv_vals[1]:.0f}"], textposition='top center'
-        ))
-        fig_tesoura.add_trace(go.Scatter(
-            x=periodos, y=cli_vals, name='Cliques',
-            line=dict(color='#27AE60', width=3),
-            mode='lines+markers+text',
-            text=[f"{cli_vals[0]:.0f}", f"{cli_vals[1]:.0f}"], textposition='bottom center'
-        ))
-        fig_tesoura.update_layout(
-            height=300,
-            plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
-            font=dict(family='Calibri'), yaxis=dict(title='Índice (base 100)', gridcolor='#EAECEE'),
-            legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1),
-            margin=dict(t=40, b=30)
-        )
-        st.plotly_chart(fig_tesoura, use_container_width=True)
-
-    # =====================================================================
-    # TABELA COMPARATIVA COMPLETA
-    # =====================================================================
-    st.subheader("📋 Tabela Comparativa Completa")
-    tabela_dados = {
-        'Métrica': ['Investimento', 'Sessões', 'Alcance', 'Impressões', 'Cliques', 'Engajamentos', 'CTR (%)'],
-        'Atual': [
-            f"R$ {dados.get('spend_atual', 0):,.0f}", f"{dados.get('sess_atual', 0):,}",
-            f"{dados.get('reach_atual', 0):,}", f"{dados.get('imp_atual', 0):,}",
-            f"{dados.get('cli_atual', 0):,}", f"{dados.get('eng_atual', 0):,}",
-            f"{dados.get('ctr_atual', 0):.2f}%"
-        ],
-        'Var. MoM': [
-            f"{dados.get('var_invest_mes', 0):+.1f}%", f"{dados.get('var_sess_mes', 0):+.1f}%",
-            f"{dados.get('var_reach_mes', 0):+.1f}%", f"{dados.get('var_imp_mes', 0):+.1f}%",
-            f"{dados.get('var_cli_mes', 0):+.1f}%", f"{dados.get('var_eng_mes', 0):+.1f}%",
-            f"{dados.get('var_ctr_mes', 0):+.1f}%"
-        ],
-        'Var. YoY': [
-            f"{dados.get('var_invest_ano', 0):+.1f}%", f"{dados.get('var_sess_ano', 0):+.1f}%",
-            f"{dados.get('var_reach_ano', 0):+.1f}%", f"{dados.get('var_imp_ano', 0):+.1f}%",
-            f"{dados.get('var_cli_ano', 0):+.1f}%", f"{dados.get('var_eng_ano', 0):+.1f}%",
-            f"{dados.get('var_ctr_ano', 0):+.1f}%"
-        ]
-    }
-    st.dataframe(pd.DataFrame(tabela_dados), use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-
-    # =====================================================================
-    # SEÇÕES ANALÍTICAS DO RELATÓRIO
-    # =====================================================================
+    
+    # Seções do relatório
     st.subheader("📌 Contexto Atual")
     st.write(st.session_state.contexto_atual)
-
+    
     st.subheader("⭐ Destaques")
     st.write(st.session_state.destaques)
-
+    
     st.subheader("🎨 Análise de Criativos")
     if st.session_state.descricoes_imagens:
         st.markdown("**Criativos do Mês Atual:**")
@@ -2600,151 +1748,128 @@ if st.session_state.relatorio_gerado:
         for desc in st.session_state.descricoes_imagens_mes_passado:
             st.markdown(desc)
     st.write(st.session_state.analise_criativos)
-
+    
     st.subheader("💰 Mídias Pagas")
     st.write(st.session_state.analise_midias_pagas)
-
+    
     st.subheader("🔍 SEO + Content")
     st.write(st.session_state.analise_seo)
-
-    st.subheader("📊 Diagnóstico de Eficiência Operacional")
-    st.write(st.session_state.diagnostico_eficiencia)
-
-    st.subheader("🚨 Red Flags & Pontos de Atenção")
-    st.write(st.session_state.red_flags)
-
-    st.subheader("🗺️ Mapa de Oportunidades")
-    st.write(st.session_state.mapa_oportunidades)
-
+    
     st.subheader("📈 Próximos Passos e Aprendizados")
     st.write(st.session_state.proximos_passos)
     
-    # =====================================================================
-    # DOWNLOADS — 4 DOCUMENTOS
-    # =====================================================================
-    st.markdown("---")
-    st.subheader("📥 Documentos para Download")
+    # Botão para baixar relatório
+    relatorio_completo = f"""
+# RELATÓRIO EXECUTIVO - {datetime.now().strftime('%d/%m/%Y')}
 
-    try:
-        # Montar dicionários de apoio para DOCX
-        dados_inv_docx = {
-            'fb_atual': st.session_state.get('fb_atual', 0),
-            'ig_atual': st.session_state.get('ig_atual', 0),
-            'tt_atual': st.session_state.get('tt_atual', 0),
-            'google_atual': st.session_state.get('google_atual', 0),
-            'yt_atual': st.session_state.get('yt_atual', 0),
-            'pmax_atual': st.session_state.get('pmax_atual', 0),
-            'total_atual': (st.session_state.get('fb_atual', 0) + st.session_state.get('ig_atual', 0) +
-                            st.session_state.get('tt_atual', 0) + st.session_state.get('google_atual', 0) +
-                            st.session_state.get('yt_atual', 0) + st.session_state.get('pmax_atual', 0)),
-            'var_fb_mes': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_mes', 0)),
-            'var_ig_mes': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_mes', 0)),
-            'var_tt_mes': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_mes', 0)),
-            'var_google_mes': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_mes', 0)),
-            'var_total_mes': 0,
-            'var_fb_ano': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_ano', 0)),
-            'var_ig_ano': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_ano', 0)),
-            'var_tt_ano': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_ano', 0)),
-            'var_google_ano': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_ano', 0)),
-            'var_total_ano': 0,
-        }
-        dados_custos_docx = {
-            'cpc_atual': st.session_state.get('cpc_atual', 0), 'cpm_atual': st.session_state.get('cpm_atual', 0),
-            'cpe_atual': st.session_state.get('cpe_atual', 0), 'cpv_atual': st.session_state.get('cpv_atual', 0),
-            'var_cpc_mes': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_mes', 0)),
-            'var_cpm_mes': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_mes', 0)),
-            'var_cpe_mes': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_mes', 0)),
-            'var_cpv_mes': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_mes', 0)),
-            'var_cpc_ano': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_ano', 0)),
-            'var_cpm_ano': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_ano', 0)),
-            'var_cpe_ano': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_ano', 0)),
-            'var_cpv_ano': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_ano', 0)),
-        }
-        dados_seo_docx = {
-            'vis_total_atual': st.session_state.get('seo_vis_atual', 0),
-            'sess_org_atual': st.session_state.get('seo_sess_org_atual', 0),
-            'vis_org_atual': st.session_state.get('seo_vis_org_atual', 0),
-            'var_vis_total_mes': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_mes', 0)),
-            'var_sess_org_mes': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_mes', 0)),
-            'var_vis_org_mes': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_mes', 0)),
-            'var_vis_total_ano': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_ano', 0)),
-            'var_sess_org_ano': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_ano', 0)),
-            'var_vis_org_ano': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_ano', 0)),
-        }
 
-        ts = datetime.now().strftime('%Y%m%d_%H%M')
+## 📌 Contexto Atual
+{st.session_state.contexto_atual}
 
-        # --- DOC 1: RELATÓRIO INTERNO (DOCX) ---
-        docx_interno = gerar_docx_relatorio(
-            dados=dados, dados_investimentos=dados_inv_docx, dados_custos=dados_custos_docx,
-            dados_seo=dados_seo_docx, contexto_atual=st.session_state.contexto_atual,
-            destaques=st.session_state.destaques, analise_criativos=st.session_state.analise_criativos,
-            analise_midias_pagas=st.session_state.analise_midias_pagas, analise_seo=st.session_state.analise_seo,
-            proximos_passos=st.session_state.proximos_passos,
-            descricoes_imagens=st.session_state.descricoes_imagens,
-            descricoes_imagens_mes_passado=st.session_state.descricoes_imagens_mes_passado,
-            diagnostico_eficiencia=st.session_state.get('diagnostico_eficiencia', ''),
-            red_flags=st.session_state.get('red_flags', ''),
-            mapa_oportunidades=st.session_state.get('mapa_oportunidades', ''),
+## ⭐ Destaques
+{st.session_state.destaques}
+
+## 🎨 Análise de Criativos
+### Criativos do Mês Atual
+{chr(10).join(st.session_state.descricoes_imagens) if st.session_state.descricoes_imagens else "Nenhum criativo enviado"}
+### Criativos do Mês Passado
+{chr(10).join(st.session_state.descricoes_imagens_mes_passado) if st.session_state.descricoes_imagens_mes_passado else "Nenhum criativo do mês passado enviado"}
+{st.session_state.analise_criativos}
+
+## 💰 Mídias Pagas
+{st.session_state.analise_midias_pagas}
+
+## 🔍 SEO + Content
+{st.session_state.analise_seo}
+
+## 📈 Próximos Passos e Aprendizados
+{st.session_state.proximos_passos}
+
+---
+*Relatório gerado por IA em {datetime.now().strftime('%d/%m/%Y %H:%M')}*
+"""
+    
+    col_dl1, col_dl2 = st.columns(2)
+    with col_dl1:
+        st.download_button(
+            label="📥 Baixar Relatório (Markdown)",
+            data=relatorio_completo,
+            file_name=f"relatorio_executivo_{datetime.now().strftime('%Y%m%d_%H%M')}.md",
+            mime="text/markdown"
         )
+    with col_dl2:
+        # Gerar DOCX
+        try:
+            # Recuperar dicionários de investimentos, custos e SEO do session_state
+            dados_inv_docx = {
+                'fb_atual': st.session_state.get('fb_atual', 0),
+                'ig_atual': st.session_state.get('ig_atual', 0),
+                'tt_atual': st.session_state.get('tt_atual', 0),
+                'google_atual': st.session_state.get('google_atual', 0),
+                'yt_atual': st.session_state.get('yt_atual', 0),
+                'pmax_atual': st.session_state.get('pmax_atual', 0),
+                'total_atual': (st.session_state.get('fb_atual', 0) + st.session_state.get('ig_atual', 0) +
+                                st.session_state.get('tt_atual', 0) + st.session_state.get('google_atual', 0) +
+                                st.session_state.get('yt_atual', 0) + st.session_state.get('pmax_atual', 0)),
+                'var_fb_mes': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_mes', 0)),
+                'var_ig_mes': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_mes', 0)),
+                'var_tt_mes': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_mes', 0)),
+                'var_google_mes': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_mes', 0)),
+                'var_total_mes': 0,
+                'var_fb_ano': calcular_variacao(st.session_state.get('fb_atual', 0), st.session_state.get('fb_ano', 0)),
+                'var_ig_ano': calcular_variacao(st.session_state.get('ig_atual', 0), st.session_state.get('ig_ano', 0)),
+                'var_tt_ano': calcular_variacao(st.session_state.get('tt_atual', 0), st.session_state.get('tt_ano', 0)),
+                'var_google_ano': calcular_variacao(st.session_state.get('google_atual', 0), st.session_state.get('google_ano', 0)),
+                'var_total_ano': 0,
+            }
 
-        # --- DOC 2: RELATÓRIO PARA O CLIENTE (DOCX) ---
-        docx_cliente = gerar_docx_cliente(
-            relatorio_cliente=st.session_state.get('relatorio_cliente', ''),
-            dados=dados, dados_investimentos=dados_inv_docx,
-            dados_custos=dados_custos_docx, dados_seo=dados_seo_docx,
-        )
+            dados_custos_docx = {
+                'cpc_atual': st.session_state.get('cpc_atual', 0),
+                'cpm_atual': st.session_state.get('cpm_atual', 0),
+                'cpe_atual': st.session_state.get('cpe_atual', 0),
+                'cpv_atual': st.session_state.get('cpv_atual', 0),
+                'var_cpc_mes': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_mes', 0)),
+                'var_cpm_mes': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_mes', 0)),
+                'var_cpe_mes': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_mes', 0)),
+                'var_cpv_mes': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_mes', 0)),
+                'var_cpc_ano': calcular_variacao(st.session_state.get('cpc_atual', 0), st.session_state.get('cpc_ano', 0)),
+                'var_cpm_ano': calcular_variacao(st.session_state.get('cpm_atual', 0), st.session_state.get('cpm_ano', 0)),
+                'var_cpe_ano': calcular_variacao(st.session_state.get('cpe_atual', 0), st.session_state.get('cpe_ano', 0)),
+                'var_cpv_ano': calcular_variacao(st.session_state.get('cpv_atual', 0), st.session_state.get('cpv_ano', 0)),
+            }
 
-        # --- DOC 3: GUIA DE SLIDES — CLIENTE (DOCX) ---
-        docx_slides_cliente = gerar_docx_slides(
-            conteudo_slides=st.session_state.get('slides_cliente', ''),
-            tipo="cliente"
-        )
+            dados_seo_docx = {
+                'vis_total_atual': st.session_state.get('seo_vis_atual', 0),
+                'sess_org_atual': st.session_state.get('seo_sess_org_atual', 0),
+                'vis_org_atual': st.session_state.get('seo_vis_org_atual', 0),
+                'var_vis_total_mes': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_mes', 0)),
+                'var_sess_org_mes': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_mes', 0)),
+                'var_vis_org_mes': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_mes', 0)),
+                'var_vis_total_ano': calcular_variacao(st.session_state.get('seo_vis_atual', 0), st.session_state.get('seo_vis_ano', 0)),
+                'var_sess_org_ano': calcular_variacao(st.session_state.get('seo_sess_org_atual', 0), st.session_state.get('seo_sess_org_ano', 0)),
+                'var_vis_org_ano': calcular_variacao(st.session_state.get('seo_vis_org_atual', 0), st.session_state.get('seo_vis_org_ano', 0)),
+            }
 
-        # --- DOC 4: GUIA DE SLIDES — INTERNO (DOCX) ---
-        docx_slides_interno = gerar_docx_slides(
-            conteudo_slides=st.session_state.get('slides_interno', ''),
-            tipo="interno"
-        )
-
-        # Layout de 4 botões
-        st.markdown("**Relatórios:**")
-        col_d1, col_d2 = st.columns(2)
-        with col_d1:
-            st.download_button(
-                label="📄 Relatório Interno (DOCX)",
-                data=docx_interno,
-                file_name=f"INTERNO_relatorio_executivo_{ts}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Relatório completo para uso interno da Macfor — com red flags, diagnóstico de eficiência e análise crua."
-            )
-        with col_d2:
-            st.download_button(
-                label="📄 Relatório para o Cliente (DOCX)",
-                data=docx_cliente,
-                file_name=f"CLIENTE_relatorio_resultados_syngenta_{ts}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Relatório de resultados para apresentação ao cliente Syngenta — tom consultivo, focado em valor entregue."
-            )
-
-        st.markdown("**Guias de Slides:**")
-        col_d3, col_d4 = st.columns(2)
-        with col_d3:
-            st.download_button(
-                label="🎯 Guia de Slides — Interno (DOCX)",
-                data=docx_slides_interno,
-                file_name=f"SLIDES_INTERNO_syngenta_{ts}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Roteiro para deck de review interno — inclui autocríticas, red flags e plano de ação."
-            )
-        with col_d4:
-            st.download_button(
-                label="🎯 Guia de Slides — Cliente (DOCX)",
-                data=docx_slides_cliente,
-                file_name=f"SLIDES_CLIENTE_syngenta_{ts}.docx",
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                help="Roteiro para deck de apresentação ao cliente — focado em conquistas e valor."
+            docx_buffer = gerar_docx_relatorio(
+                dados=dados,
+                dados_investimentos=dados_inv_docx,
+                dados_custos=dados_custos_docx,
+                dados_seo=dados_seo_docx,
+                contexto_atual=st.session_state.contexto_atual,
+                destaques=st.session_state.destaques,
+                analise_criativos=st.session_state.analise_criativos,
+                analise_midias_pagas=st.session_state.analise_midias_pagas,
+                analise_seo=st.session_state.analise_seo,
+                proximos_passos=st.session_state.proximos_passos,
+                descricoes_imagens=st.session_state.descricoes_imagens,
+                descricoes_imagens_mes_passado=st.session_state.descricoes_imagens_mes_passado,
             )
 
-    except Exception as e:
-        st.error(f"Erro ao gerar documentos: {str(e)}")
+            st.download_button(
+                label="📥 Baixar Relatório (DOCX)",
+                data=docx_buffer,
+                file_name=f"relatorio_executivo_syngenta_{datetime.now().strftime('%Y%m%d_%H%M')}.docx",
+                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+        except Exception as e:
+            st.error(f"Erro ao gerar DOCX: {str(e)}")
