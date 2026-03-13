@@ -46,7 +46,7 @@ if not st.session_state.autenticado:
 chaves_sessao = [
     'relatorio_gerado', 'descricoes_imagens', 'descricoes_imagens_mes_passado',
     'dados_processados', 'resumos_social_csvs', 'resumos_seo_csvs',
-    'etapa_cenario_atual', 'etapa_destaques', 'etapa_midias_pagas',
+    'etapa_cenario_atual', 'etapa_destaques', 'etapa_produtos_destaque', 'etapa_midias_pagas',
     'etapa_social', 'etapa_seo', 'etapa_aprendizados', 'etapa_proximos_passos'
 ]
 
@@ -217,8 +217,77 @@ def fetch_bigquery_data():
         st.error(f"Erro na query: {str(e)}")
         return None
 
-    
+def fetch_products_data():
+    """Busca produtos destaque por categoria via app_view_media_plan."""
+    if client_bq is None:
+        return None
 
+    query_produtos = """
+    WITH base AS (
+        SELECT
+            category_or_project,
+            product,
+            SUM(investment_realized)  AS spend_total,
+            SUM(impressions_realized) AS impressions_total,
+            SUM(clicks_realized)      AS clicks_total,
+            SUM(clicks_realized) / NULLIF(SUM(impressions_realized), 0) AS ctr_media,
+            SUM(reach_realized)       AS reach_total
+        FROM `macfor-media-flow.ads.app_view_media_plan`
+        WHERE
+            UPPER(client) LIKE '%SYNGENTA%'
+            AND start_date >= DATE_TRUNC(DATE_SUB(CURRENT_DATE(), INTERVAL 1 MONTH), MONTH)
+            AND start_date <  DATE_TRUNC(CURRENT_DATE(), MONTH)
+            AND product IS NOT NULL
+            AND category_or_project IS NOT NULL
+        GROUP BY category_or_project, product
+    ),
+    ranked AS (
+        SELECT
+            *,
+            ROW_NUMBER() OVER (
+                PARTITION BY category_or_project
+                ORDER BY spend_total DESC
+            ) AS rank_spend,
+            ROW_NUMBER() OVER (
+                PARTITION BY category_or_project
+                ORDER BY impressions_total DESC
+            ) AS rank_imp,
+            ROW_NUMBER() OVER (
+                PARTITION BY category_or_project
+                ORDER BY ctr_media DESC
+            ) AS rank_ctr
+        FROM base
+    )
+    SELECT
+        category_or_project,
+        product,
+        ROUND(spend_total, 2)       AS spend_total,
+        impressions_total,
+        clicks_total,
+        ROUND(ctr_media, 4)         AS ctr_media,
+        reach_total,
+        rank_spend,
+        rank_imp,
+        rank_ctr
+    FROM ranked
+    WHERE rank_spend <= 5         -- top 5 por categoria
+    ORDER BY category_or_project, rank_spend
+    """
+    try:
+        df = client_bq.query(query_produtos).to_dataframe()
+        if df.empty:
+            return None
+        # Agrupa em dicionário por categoria
+        result = {}
+        for _, row in df.iterrows():
+            cat = row['category_or_project']
+            if cat not in result:
+                result[cat] = []
+            result[cat].append(row.to_dict())
+        return result
+    except Exception as e:
+        st.error(f"Erro ao buscar produtos: {str(e)}")
+        return None
 
 
 
@@ -1091,6 +1160,89 @@ Cubra obrigatoriamente:
     return gerar_texto(prompt, modelo_escolhido)
 
 
+def gerar_produtos_destaque(cenario_atual, dados_produtos, modelo_escolhido="Gemini"):
+    """ETAPA 2.5 — Produtos Destaque por Categoria (app_view_media_plan)."""
+
+    # Formata a tabela de produtos para o prompt
+    if not dados_produtos:
+        tabela_produtos = "Nenhum dado de produto disponível neste período."
+    else:
+        linhas = []
+        for categoria, produtos in dados_produtos.items():
+            linhas.append(f"\n### Categoria: {categoria}\n")
+            linhas.append("| # | Produto | Investimento | Impressões | Cliques | CTR |")
+            linhas.append("|---|---------|-------------|------------|---------|-----|")
+            for p in produtos[:3]:  # top 3 por categoria
+                linhas.append(
+                    f"| {int(p['rank_spend'])} | {p['product']} "
+                    f"| R$ {p['spend_total']:,.2f} "
+                    f"| {int(p['impressions_total']):,} "
+                    f"| {int(p['clicks_total']):,} "
+                    f"| {p['ctr_media']*100:.2f}% |"
+                )
+        tabela_produtos = "\n".join(linhas)
+
+    prompt = f"""
+Você é um especialista sênior em marketing digital com profundo conhecimento do agronegócio brasileiro. Escreva a seção PRODUTOS DESTAQUE do relatório executivo mensal da Syngenta. Esta é a ETAPA 2.5 do pipeline — vem depois dos Destaques gerais e antes das Mídias Pagas.
+
+OBJETIVO DESTA SEÇÃO: identificar quais produtos (crops, soluções, linhas de produto) tiveram melhor desempenho por categoria de campanha no período, explicar o porquê com base nos dados e contextualizar com o cenário agro. O output deve estar formatado para ser diretamente transferido a um slide de apresentação executiva.
+
+---
+
+**CENÁRIO ATUAL DO PERÍODO (Etapa 1 — base de contexto):**
+{cenario_atual}
+
+---
+
+**DADOS DE PRODUTOS DESTAQUE POR CATEGORIA (app_view_media_plan):**
+{tabela_produtos}
+
+---
+
+## COMO ANALISAR E ESTRUTURAR A RESPOSTA
+
+Escreva OBRIGATORIAMENTE no seguinte formato para cada categoria (isso alimenta os slides diretamente):
+
+---
+
+## [NOME DA CATEGORIA]
+
+**Produto #1 — [NOME DO PRODUTO]** · DESTAQUE | ALERTA | OPORTUNIDADE
+Investimento: R$ X.XXX · Impressões: XXX.XXX · Cliques: X.XXX · CTR: X.XX%
+> [1 parágrafo curto (máx. 4 linhas): por que este produto se destacou? Qual contexto agro/safra justifica o desempenho? Qual correlação com métricas gerais da Etapa 1? Qualificação clara: conquista, risco ou oportunidade. Seja específico — não use frases genéricas.]
+
+**Produto #2 — [NOME DO PRODUTO]** · DESTAQUE | ALERTA | OPORTUNIDADE
+Investimento: R$ X.XXX · Impressões: XXX.XXX · Cliques: X.XXX · CTR: X.XX%
+> [1 parágrafo curto (máx. 4 linhas): mesma estrutura acima]
+
+**Produto #3 — [NOME DO PRODUTO]** · DESTAQUE | ALERTA | OPORTUNIDADE
+Investimento: R$ X.XXX · Impressões: XXX.XXX · Cliques: X.XXX · CTR: X.XX%
+> [1 parágrafo curto (máx. 4 linhas): mesma estrutura acima]
+
+**Insight da Categoria:** [1 frase única com o principal aprendizado desta categoria — deve ser acionável e específico, ex: "Alto CTR de Herbicida X com baixo investimento relativo indica demanda orgânica não atendida — oportunidade de escala no Meta."]
+
+---
+
+## DIRETRIZES DE ANÁLISE
+
+Para cada produto, responda implicitamente:
+1. **Eficiência real vs. volume**: o produto lidera em spend porque recebeu mais budget, ou porque gerou mais resultado por real investido? Se o CTR for alto com investimento baixo = sinal de demanda natural. Se o CTR for baixo com alto investimento = volume forçado.
+2. **Contexto de safra e calendário agro**: lembre-se de que cada produto da Syngenta tem janelas de demanda (plantio, tratamento, colheita). Um produto em destaque fora do período de safra é um sinal mais forte do que um em plena safra.
+3. **Conexão com métricas gerais**: o desempenho deste produto está puxando ou é puxado pelo cenário geral da Etapa 1? Efeito Tesoura localizado?
+4. **Anomalia vs. tendência**: o destaque é recorrente ou pontual? O alerta é estrutural ou conjuntural?
+
+## REGRAS OBRIGATÓRIAS
+- Use EXATAMENTE o formato de bloco acima — isso é lido por código para gerar os slides automaticamente
+- Não invente dados. Se um dado não estiver na tabela, não mencione
+- Texto dos parágrafos: prosa técnica, objetiva, máximo 4 linhas por produto
+- Classificação obrigatória: escolha apenas UMA entre DESTAQUE, ALERTA ou OPORTUNIDADE para cada produto
+- Português do Brasil
+- Tom: especialista de negócios falando para um CMO ou diretor de marketing agrícola
+- O "Insight da Categoria" deve ser diferente para cada categoria — não repita o mesmo padrão
+"""
+    return gerar_texto(prompt, modelo_escolhido)
+
+
 def gerar_midias_pagas(cenario_atual, dados_investimentos, dados_custos, modelo_escolhido="Gemini"):
     """ETAPA 3/7: Análise de Mídias Pagas por canal."""
     prompt = f"""
@@ -1831,6 +1983,12 @@ if submitted:
             etapa_destaques = gerar_destaques(etapa_cenario_atual, modelo_escolhido)
         progress.progress(2/7, text="2/7 — Destaques")
 
+        dados_produtos = fetch_products_data()
+        with st.spinner("🌱 Produtos Destaque..."):
+            etapa_produtos_destaque = gerar_produtos_destaque(
+                etapa_cenario_atual, dados_produtos, modelo_escolhido
+            )
+
         with st.spinner("3/7 — Mídias Pagas..."):
             etapa_midias_pagas = gerar_midias_pagas(etapa_cenario_atual, dados_investimentos, dados_custos, modelo_escolhido)
         progress.progress(3/7, text="3/7 — Mídias Pagas")
@@ -1860,6 +2018,7 @@ if submitted:
         st.session_state.resumos_seo_csvs = resumos_seo_csvs
         st.session_state.etapa_cenario_atual = etapa_cenario_atual
         st.session_state.etapa_destaques = etapa_destaques
+        st.session_state.etapa_produtos_destaque = etapa_produtos_destaque
         st.session_state.etapa_midias_pagas = etapa_midias_pagas
         st.session_state.etapa_social = etapa_social
         st.session_state.etapa_seo = etapa_seo
@@ -2102,6 +2261,9 @@ if st.session_state.relatorio_gerado:
 
     st.subheader("⭐ 2 — Destaques")
     st.write(st.session_state.etapa_destaques)
+
+    st.subheader("🌱 2.5 — Produtos Destaque por Categoria")
+    st.write(st.session_state.etapa_produtos_destaque)
 
     st.subheader("💰 3 — Mídias Pagas")
     st.write(st.session_state.etapa_midias_pagas)
