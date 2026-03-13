@@ -45,7 +45,7 @@ if not st.session_state.autenticado:
 # Inicialização do estado da sessão para evitar KeyError/AttributeError
 chaves_sessao = [
     'relatorio_gerado', 'descricoes_imagens', 'descricoes_imagens_mes_passado',
-    'dados_processados',
+    'dados_processados', 'resumos_social_csvs', 'resumos_seo_csvs',
     'etapa_cenario_atual', 'etapa_destaques', 'etapa_midias_pagas',
     'etapa_social', 'etapa_seo', 'etapa_aprendizados', 'etapa_proximos_passos'
 ]
@@ -54,7 +54,7 @@ for chave in chaves_sessao:
     if chave not in st.session_state:
         if chave == 'relatorio_gerado':
             st.session_state[chave] = False
-        elif chave in ['descricoes_imagens', 'descricoes_imagens_mes_passado']:
+        elif chave in ['descricoes_imagens', 'descricoes_imagens_mes_passado', 'resumos_social_csvs', 'resumos_seo_csvs']:
             st.session_state[chave] = []
         elif chave == 'dados_processados':
             st.session_state[chave] = {}
@@ -1134,8 +1134,32 @@ Analise em profundidade:
     return gerar_texto(prompt, modelo_escolhido)
 
 
-def gerar_social(cenario_atual, descricoes_imagens, descricoes_imagens_mes_passado, dados_custos, modelo_escolhido="Gemini"):
+def gerar_social(cenario_atual, descricoes_imagens, descricoes_imagens_mes_passado, dados_custos, resumos_social_csvs=None, modelo_escolhido="Gemini"):
     """ETAPA 4/7: Análise de Social/Criativos."""
+
+    bloco_csvs = ""
+    bloco_analise_csv = ""
+    num_recomendacoes = "6"
+    if resumos_social_csvs:
+        dados_csvs_juntos = chr(10).join(resumos_social_csvs)
+        bloco_csvs = (
+            "\n---\n\n"
+            "**DADOS BRUTOS DE SOCIAL (CSVs enviados pelo usuário):**\n"
+            "Os dados abaixo foram exportados diretamente das plataformas sociais. O formato varia — analise cada arquivo individualmente, "
+            "identifique quais métricas e dimensões estão presentes, e extraia todos os insights possíveis. Cruze esses dados com os criativos, "
+            "indicadores de eficiência e cenário atual.\n\n"
+            f"{dados_csvs_juntos}\n\n---\n"
+        )
+        bloco_analise_csv = (
+            "\n6. **Análise dos dados de Social (CSVs)**: analise todos os dados brutos fornecidos. "
+            "Identifique padrões de engajamento, melhores horários, tipos de conteúdo com melhor performance, "
+            "crescimento de seguidores, alcance orgânico vs. pago, e qualquer insight relevante que os dados revelem. "
+            "Cruze com os criativos e indicadores de eficiência.\n\n"
+            "7. **Cruzamentos entre fontes**: correlacione métricas dos CSVs com os dados de custo (CPE, CPC) "
+            "e as análises visuais dos criativos. Identifique quais posts/conteúdos geraram melhor retorno.\n"
+        )
+        num_recomendacoes = "8"
+
     prompt = f"""
 Você é um especialista sênior em marketing digital. Escreva a seção SOCIAL do relatório executivo mensal da Syngenta. Esta é a QUARTA de 7 etapas. Foque na análise de criativos, conteúdo social e performance criativa.
 
@@ -1157,7 +1181,7 @@ Você é um especialista sênior em marketing digital. Escreva a seção SOCIAL 
 | CPC | R$ {dados_custos.get('cpc_atual', 0):.2f} | {dados_custos.get('var_cpc_mes', 0):+.1f}%% | {dados_custos.get('var_cpc_ano', 0):+.1f}%% |
 | CPV | R$ {dados_custos.get('cpv_atual', 0):.2f} | {dados_custos.get('var_cpv_mes', 0):+.1f}%% | {dados_custos.get('var_cpv_ano', 0):+.1f}%% |
 | CPM | R$ {dados_custos.get('cpm_atual', 0):.2f} | {dados_custos.get('var_cpm_mes', 0):+.1f}%% | {dados_custos.get('var_cpm_ano', 0):+.1f}%% |
-
+{bloco_csvs}
 ---
 
 Analise em profundidade:
@@ -1171,16 +1195,37 @@ Analise em profundidade:
 4. **ROI criativo**: correlacione mudanças visuais/narrativas com variações de CPE/CPC. Se CPE caiu, qual elemento causou? Se CPC subiu, o criativo gera curiosidade sem entregar promessa?
 
 5. **Fadiga criativa**: criativos muito similares = saturação. Muito diferentes = inconsistência de marca.
+{bloco_analise_csv}
+{num_recomendacoes}. **Recomendações concretas**: testes A/B específicos, formatos a explorar (carrossel, Reels, UGC de produtor), ajustes de composição visual.
 
-6. **Recomendações concretas**: testes A/B específicos, formatos a explorar (carrossel, Reels, UGC de produtor), ajustes de composição visual.
-
-**REGRAS:** Não invente dados. Prosa corrida. Tom técnico. Português do Brasil.
+**REGRAS:** Não invente dados. Prosa corrida. Tom técnico. Português do Brasil. Se dados de CSVs foram fornecidos, OBRIGATORIAMENTE analise-os e extraia insights — não os ignore.
 """
     return gerar_texto(prompt, modelo_escolhido)
 
 
-def gerar_seo_content(cenario_atual, dados_seo, dados_custos, modelo_escolhido="Gemini"):
+def gerar_seo_content(cenario_atual, dados_seo, dados_custos, resumos_seo_csvs=None, modelo_escolhido="Gemini"):
     """ETAPA 5/7: Análise de SEO e Conteúdo."""
+
+    bloco_csvs = ""
+    bloco_analise_seo_csv = ""
+    if resumos_seo_csvs:
+        dados_csvs_juntos = chr(10).join(resumos_seo_csvs)
+        bloco_csvs = (
+            "\n---\n\n"
+            "**DADOS BRUTOS DE SEO (CSVs enviados pelo usuário):**\n"
+            "Os dados abaixo foram exportados diretamente de ferramentas de SEO (Google Search Console, GA4, SEMrush, Ahrefs, etc.). "
+            "O formato varia — analise cada arquivo individualmente, identifique quais métricas e dimensões estão presentes, "
+            "e extraia todos os insights possíveis. Cruze esses dados com as métricas manuais acima e o cenário atual.\n\n"
+            f"{dados_csvs_juntos}\n\n---\n"
+        )
+        bloco_analise_seo_csv = (
+            "\n7. **Análise dos dados de SEO (CSVs)**: analise todos os dados brutos fornecidos. "
+            "Identifique tendências de posicionamento, queries com potencial de crescimento, páginas de melhor/pior performance, "
+            "CTR por posição, impressões vs. cliques, e qualquer insight relevante que os dados revelem.\n\n"
+            "8. **Cruzamentos entre fontes**: correlacione os dados dos CSVs com as métricas manuais e o cenário atual. "
+            "Identifique discrepâncias, oportunidades ocultas e confirme ou refute tendências.\n"
+        )
+
     prompt = f"""
 Você é um especialista sênior em marketing digital. Escreva a seção SEO do relatório executivo mensal da Syngenta. Esta é a QUINTA de 7 etapas.
 
@@ -1202,7 +1247,7 @@ Você é um especialista sênior em marketing digital. Escreva a seção SEO do 
 **Top Keywords:** {dados_seo.get('top_keywords', 'Nenhuma keyword fornecida')}
 
 **CPC Médio (para cálculo de custo evitado):** R$ {dados_custos.get('cpc_atual', 0):.2f}
-
+{bloco_csvs}
 ---
 
 Analise em profundidade:
@@ -1218,8 +1263,8 @@ Analise em profundidade:
 5. **Custo evitado pelo orgânico**: sessões orgânicas × CPC médio = economia de mídia paga. Quantifique.
 
 6. **Content gap analysis**: baseado nas keywords, quais temas o público busca que a Syngenta não cobre?
-
-**REGRAS:** Não invente dados. Prosa corrida. Tom técnico. Português do Brasil.
+{bloco_analise_seo_csv}
+**REGRAS:** Não invente dados. Prosa corrida. Tom técnico. Português do Brasil. Se dados de CSVs foram fornecidos, OBRIGATORIAMENTE analise-os e extraia insights — não os ignore.
 """
     return gerar_texto(prompt, modelo_escolhido)
 
@@ -1397,7 +1442,22 @@ with st.form("relatorio_form"):
         imagens = st.file_uploader("Faça upload dos criativos atuais", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_atual")
         st.markdown("**Criativos do Mês Passado** *(para comparação)*")
         imagens_mes_passado = st.file_uploader("Faça upload dos criativos do mês passado", type=['png', 'jpg', 'jpeg'], accept_multiple_files=True, key="upload_mes_passado")
-    
+
+    # Dados de Social (CSVs)
+    st.subheader("📱 Dados de Social (CSVs)")
+    st.markdown(
+        "Faça upload de CSVs exportados das plataformas sociais (Instagram Insights, TikTok Analytics, "
+        "Facebook Page, X/Twitter, LinkedIn, etc.). **Qualquer formato é aceito** — o sistema lê os dados "
+        "brutos e cruza com as demais informações do relatório via IA generativa."
+    )
+    social_csvs = st.file_uploader(
+        "Upload de CSVs de Social",
+        type=['csv'],
+        accept_multiple_files=True,
+        key="upload_social_csvs",
+        help="Aceita múltiplos arquivos. O formato pode variar — o sistema não assume nenhuma estrutura fixa."
+    )
+
 # Métricas Principais
     st.subheader("📊 Métricas de Performance")
     
@@ -1533,6 +1593,19 @@ with st.form("relatorio_form"):
         seo_usuarios_org_ano_passado = st.number_input("Usuários Orgânicos (Ano Passado)", min_value=0)
     
     top_keywords = st.text_area("Top 10 Palavras-chave do Mês", height=100, placeholder="Liste as principais palavras-chave...")
+
+    st.markdown("**📂 Dados de SEO (CSVs)**")
+    st.markdown(
+        "Faça upload de CSVs exportados de ferramentas de SEO (Google Search Console, GA4, SEMrush, Ahrefs, etc.). "
+        "**Qualquer formato é aceito** — o sistema lê os dados brutos e cruza com as demais informações via IA."
+    )
+    seo_csvs = st.file_uploader(
+        "Upload de CSVs de SEO",
+        type=['csv'],
+        accept_multiple_files=True,
+        key="upload_seo_csvs",
+        help="Aceita múltiplos arquivos. O formato pode variar — o sistema não assume nenhuma estrutura fixa."
+    )
     
     submitted = st.form_submit_button("🚀 Gerar Relatório Executivo")
 
@@ -1562,7 +1635,50 @@ if submitted:
                 image = Image.open(imagem_file)
                 descricao = descrever_imagem(image)
                 descricoes_imagens_mes_passado.append(f"**[MES PASSADO] {imagem_file.name}**: {descricao}")
-    
+
+    # Processar CSVs de Social — leitura agnóstica de formato
+    resumos_social_csvs = []
+    if social_csvs:
+        with st.spinner("Lendo dados de Social (CSVs)..."):
+            for csv_file in social_csvs:
+                try:
+                    df = pd.read_csv(csv_file)
+                    # Limitar preview para não estourar contexto do LLM
+                    max_linhas = 80
+                    preview = df.head(max_linhas).to_markdown(index=False)
+                    resumo_estatistico = df.describe(include='all').to_markdown()
+                    resumo = (
+                        f"### Arquivo: {csv_file.name}\n"
+                        f"- **Linhas:** {len(df)} | **Colunas:** {len(df.columns)}\n"
+                        f"- **Colunas:** {', '.join(df.columns.tolist())}\n\n"
+                        f"**Resumo estatístico:**\n{resumo_estatistico}\n\n"
+                        f"**Dados ({min(len(df), max_linhas)} primeiras linhas):**\n{preview}"
+                    )
+                    resumos_social_csvs.append(resumo)
+                except Exception as e:
+                    resumos_social_csvs.append(f"### Arquivo: {csv_file.name}\n⚠️ Erro ao ler: {str(e)}")
+
+    # Processar CSVs de SEO — leitura agnóstica de formato
+    resumos_seo_csvs = []
+    if seo_csvs:
+        with st.spinner("Lendo dados de SEO (CSVs)..."):
+            for csv_file in seo_csvs:
+                try:
+                    df = pd.read_csv(csv_file)
+                    max_linhas = 80
+                    preview = df.head(max_linhas).to_markdown(index=False)
+                    resumo_estatistico = df.describe(include='all').to_markdown()
+                    resumo = (
+                        f"### Arquivo: {csv_file.name}\n"
+                        f"- **Linhas:** {len(df)} | **Colunas:** {len(df.columns)}\n"
+                        f"- **Colunas:** {', '.join(df.columns.tolist())}\n\n"
+                        f"**Resumo estatístico:**\n{resumo_estatistico}\n\n"
+                        f"**Dados ({min(len(df), max_linhas)} primeiras linhas):**\n{preview}"
+                    )
+                    resumos_seo_csvs.append(resumo)
+                except Exception as e:
+                    resumos_seo_csvs.append(f"### Arquivo: {csv_file.name}\n⚠️ Erro ao ler: {str(e)}")
+
     # Organizar dados
     dados_metrica_performance = {
         'spend_atual': st.session_state.get('spend_atual', 0),
@@ -1720,11 +1836,11 @@ if submitted:
         progress.progress(3/7, text="3/7 — Mídias Pagas")
 
         with st.spinner("4/7 — Social..."):
-            etapa_social = gerar_social(etapa_cenario_atual, descricoes_imagens, descricoes_imagens_mes_passado, dados_custos, modelo_escolhido)
+            etapa_social = gerar_social(etapa_cenario_atual, descricoes_imagens, descricoes_imagens_mes_passado, dados_custos, resumos_social_csvs, modelo_escolhido)
         progress.progress(4/7, text="4/7 — Social")
 
         with st.spinner("5/7 — SEO..."):
-            etapa_seo = gerar_seo_content(etapa_cenario_atual, dados_seo, dados_custos, modelo_escolhido)
+            etapa_seo = gerar_seo_content(etapa_cenario_atual, dados_seo, dados_custos, resumos_seo_csvs, modelo_escolhido)
         progress.progress(5/7, text="5/7 — SEO")
 
         with st.spinner("6/7 — Aprendizados..."):
@@ -1740,6 +1856,8 @@ if submitted:
         st.session_state.dados_processados = dados_metrica_performance
         st.session_state.descricoes_imagens = descricoes_imagens
         st.session_state.descricoes_imagens_mes_passado = descricoes_imagens_mes_passado
+        st.session_state.resumos_social_csvs = resumos_social_csvs
+        st.session_state.resumos_seo_csvs = resumos_seo_csvs
         st.session_state.etapa_cenario_atual = etapa_cenario_atual
         st.session_state.etapa_destaques = etapa_destaques
         st.session_state.etapa_midias_pagas = etapa_midias_pagas
